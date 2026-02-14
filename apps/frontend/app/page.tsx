@@ -40,7 +40,7 @@ export default function HomePage() {
             </p>
             {isAuthed ? (
               <div className="flex flex-wrap gap-3">
-                <Link href="/admin/elections/new">
+                <Link href="/admin/elections">
                   <Button>
                     Open Console
                     <ArrowRight className="h-4 w-4" />
@@ -58,7 +58,7 @@ export default function HomePage() {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Link href="/admin/elections/new">
+                <Link href="/admin/elections">
                   <Button variant="outline">Admin console</Button>
                 </Link>
               </div>
@@ -111,7 +111,7 @@ export default function HomePage() {
             Create organization and election, manage candidates and voter roll, then publish and review
             tally results.
           </p>
-          <Link className="text-sm font-semibold text-primary hover:underline" href="/admin/elections/new">
+          <Link className="text-sm font-semibold text-primary hover:underline" href="/admin/elections">
             Open admin console
           </Link>
         </Card>

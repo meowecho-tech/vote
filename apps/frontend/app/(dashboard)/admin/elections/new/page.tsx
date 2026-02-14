@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ const DEFAULT_PAGINATION: PaginationMeta = { page: 1, per_page: 20, total: 0, to
 
 export default function AdminElectionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { success: toastSuccess, error: toastError } = useToast();
   const [token, setToken] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -165,6 +166,17 @@ export default function AdminElectionPage() {
       void loadElections(accessToken, 1);
     }
   }, [router]);
+
+  useEffect(() => {
+    const electionIdFromQuery = searchParams.get("electionId");
+    if (!electionIdFromQuery) {
+      return;
+    }
+
+    setElectionId(electionIdFromQuery);
+    setCandidatesPage(1);
+    setVotersPage(1);
+  }, [searchParams]);
 
   async function loadOrganizations(accessTokenOverride?: string) {
     const accessToken = accessTokenOverride ?? token;
@@ -574,6 +586,11 @@ export default function AdminElectionPage() {
         <p className="text-sm text-foreground/70">
           Create election, manage candidates/voters, publish, close, and fetch results.
         </p>
+        <div>
+          <Link className="text-sm font-semibold text-primary hover:underline" href="/admin/elections">
+            Back to elections index
+          </Link>
+        </div>
       </Card>
 
       <Card className="space-y-4">

@@ -90,7 +90,7 @@
 - [ ] Add archived elections and soft-delete policies
 
 ### D. Frontend UX completeness
-- [ ] Add dedicated admin elections index page (not only in create/manage screen)
+- [x] Add dedicated admin elections index page (not only in create/manage screen)
 - [x] Add global auth guard middleware/layout handling
 - [x] Add standardized API error UI and toast system
 - [x] Add loading/skeleton states for all admin async sections
