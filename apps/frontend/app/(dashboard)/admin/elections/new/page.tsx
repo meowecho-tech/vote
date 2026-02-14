@@ -23,6 +23,7 @@ import {
   listVoterRolls,
   publishElection,
   removeVoterRoll,
+  updateCandidate,
 } from "@/lib/api";
 import { getRoleFromAccessToken } from "@/lib/auth";
 import type {
@@ -61,6 +62,9 @@ export default function AdminElectionPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateName, setCandidateName] = useState("");
   const [candidateManifesto, setCandidateManifesto] = useState("");
+  const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null);
+  const [editCandidateName, setEditCandidateName] = useState("");
+  const [editCandidateManifesto, setEditCandidateManifesto] = useState("");
 
   const [voters, setVoters] = useState<VoterRollEntry[]>([]);
   const [voterIdInput, setVoterIdInput] = useState("");
@@ -237,6 +241,34 @@ export default function AdminElectionPage() {
       setMessage("Candidate added");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "add candidate failed");
+    }
+  }
+
+  function startEditCandidate(candidate: Candidate) {
+    setEditingCandidateId(candidate.id);
+    setEditCandidateName(candidate.name);
+    setEditCandidateManifesto(candidate.manifesto ?? "");
+  }
+
+  function cancelEditCandidate() {
+    setEditingCandidateId(null);
+    setEditCandidateName("");
+    setEditCandidateManifesto("");
+  }
+
+  async function onUpdateCandidate(candidateId: string) {
+    if (!token || !electionId || !authorized) return;
+
+    try {
+      await updateCandidate(token, electionId, candidateId, {
+        name: editCandidateName,
+        manifesto: editCandidateManifesto || null,
+      });
+      cancelEditCandidate();
+      await loadElectionData();
+      setMessage("Candidate updated");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "update candidate failed");
     }
   }
 
@@ -536,15 +568,56 @@ export default function AdminElectionPage() {
                   key={candidate.id}
                   className="flex items-center justify-between rounded border border-border p-2 text-sm"
                 >
-                  <div>
-                    <p>{candidate.name}</p>
-                    {candidate.manifesto ? (
-                      <p className="text-xs text-slate-600">{candidate.manifesto}</p>
-                    ) : null}
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => onDeleteCandidate(candidate.id)}>
-                    Delete
-                  </Button>
+                  {editingCandidateId === candidate.id ? (
+                    <div className="w-full space-y-2">
+                      <Input
+                        value={editCandidateName}
+                        onChange={(e) => setEditCandidateName(e.target.value)}
+                      />
+                      <Input
+                        value={editCandidateManifesto}
+                        onChange={(e) => setEditCandidateManifesto(e.target.value)}
+                        placeholder="Manifesto (optional)"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => void onUpdateCandidate(candidate.id)}
+                          disabled={!editCandidateName.trim()}
+                        >
+                          Save
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={cancelEditCandidate}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <p>{candidate.name}</p>
+                        {candidate.manifesto ? (
+                          <p className="text-xs text-slate-600">{candidate.manifesto}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEditCandidate(candidate)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onDeleteCandidate(candidate.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::{
     domain::{
         AddVoterRollRequest, CreateCandidateRequest, CreateElectionRequest,
-        CreateOrganizationRequest, UserRole,
+        CreateOrganizationRequest, UpdateCandidateRequest, UserRole,
     },
     errors::AppError,
     middleware::{require_roles, AuthenticatedUser},
@@ -395,6 +395,46 @@ async fn create_candidate(
     })))
 }
 
+#[patch("/elections/{id}/candidates/{candidate_id}")]
+async fn update_candidate(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    path: web::Path<(Uuid, Uuid)>,
+    body: web::Json<UpdateCandidateRequest>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
+    let (election_id, candidate_id) = path.into_inner();
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest(
+            "candidate name is required".to_string(),
+        ));
+    }
+
+    let affected = sqlx::query(
+        r#"
+        UPDATE candidates
+        SET name = $1, manifesto = $2
+        WHERE id = $3 AND election_id = $4
+        "#,
+    )
+    .bind(name)
+    .bind(body.manifesto.clone())
+    .bind(candidate_id)
+    .bind(election_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|_| AppError::Internal)?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(AppError::NotFound("candidate not found".to_string()));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": { "ok": true } })))
+}
+
 #[delete("/elections/{id}/candidates/{candidate_id}")]
 async fn delete_candidate(
     pool: web::Data<PgPool>,
@@ -511,6 +551,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(results)
         .service(list_candidates)
         .service(create_candidate)
+        .service(update_candidate)
         .service(delete_candidate)
         .service(list_voter_rolls)
         .service(add_voter_roll)

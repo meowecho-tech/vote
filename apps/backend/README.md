@@ -26,6 +26,7 @@ cargo run
 - `PATCH /api/v1/elections/{id}/close` (admin/election officer)
 - `GET /api/v1/elections/{id}/candidates` (admin/election officer/voter)
 - `POST /api/v1/elections/{id}/candidates` (admin/election officer)
+- `PATCH /api/v1/elections/{id}/candidates/{candidate_id}` (admin/election officer)
 - `DELETE /api/v1/elections/{id}/candidates/{candidate_id}` (admin/election officer)
 - `GET /api/v1/elections/{id}/voter-rolls` (admin/election officer)
 - `POST /api/v1/elections/{id}/voter-rolls` (admin/election officer)

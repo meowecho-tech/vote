@@ -235,6 +235,19 @@ export async function createCandidate(
   });
 }
 
+export async function updateCandidate(
+  accessToken: string,
+  electionId: string,
+  candidateId: string,
+  payload: { name: string; manifesto: string | null }
+) {
+  return request<{ data: { ok: boolean } }>(`/elections/${electionId}/candidates/${candidateId}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function deleteCandidate(accessToken: string, electionId: string, candidateId: string) {
   return request<{ data: { ok: boolean } }>(`/elections/${electionId}/candidates/${candidateId}`, {
     method: "DELETE",

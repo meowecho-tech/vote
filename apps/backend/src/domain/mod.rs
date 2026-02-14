@@ -83,6 +83,12 @@ pub struct CreateCandidateRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateCandidateRequest {
+    pub name: String,
+    pub manifesto: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AddVoterRollRequest {
     pub user_id: Uuid,
 }

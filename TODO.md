@@ -35,7 +35,7 @@
 
 ### Admin operations
 - [x] Organizations API: list/create
-- [x] Candidate API: list/create/delete
+- [x] Candidate API: list/create/update/delete
 - [x] Voter roll API: list/add/remove
 
 ### Database / Migration
@@ -83,7 +83,6 @@
 
 ### C. Election management completeness
 - [ ] Add election update endpoint (title/description/window before publish)
-- [ ] Add candidate update endpoint
 - [ ] Add bulk voter-roll import (CSV/JSON) with validation report
 - [ ] Add pagination for elections/candidates/voter-roll endpoints
 - [ ] Add archived elections and soft-delete policies
