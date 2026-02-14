@@ -413,15 +413,21 @@ export default function AdminElectionPage() {
   }
 
   if (!authChecked) {
-    return <main className="mx-auto max-w-5xl">Checking authorization...</main>;
+    return (
+      <main className="mx-auto max-w-5xl">
+        <Card className="fade-up">
+          <p className="text-sm text-foreground/70">Checking authorization...</p>
+        </Card>
+      </main>
+    );
   }
 
   if (!authorized) {
     return (
       <main className="mx-auto max-w-3xl">
-        <Card className="space-y-3">
+        <Card className="fade-up space-y-3">
           <h1 className="text-2xl font-semibold">Unauthorized</h1>
-          <p className="text-sm text-slate-600">Only admin or election officer can access this page.</p>
+          <p className="text-sm text-foreground/70">Only admin or election officer can access this page.</p>
           <Link className="text-primary underline" href="/">
             Back to home
           </Link>
@@ -445,12 +451,18 @@ export default function AdminElectionPage() {
   const hasNextCandidates = candidatesPagination.page < candidatesPagination.total_pages;
   const hasPrevVoters = votersPagination.page > 1;
   const hasNextVoters = votersPagination.page < votersPagination.total_pages;
+  const selectClassName =
+    "flex h-10 w-full rounded-xl border border-border/85 bg-card/85 px-3 py-2 text-sm text-foreground shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
+  const compactSelectClassName =
+    "flex h-10 rounded-xl border border-border/85 bg-card/85 px-3 py-2 text-sm text-foreground shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
+  const textareaClassName =
+    "min-h-28 w-full rounded-xl border border-border/85 bg-card/85 p-2 text-sm text-foreground shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
 
   return (
-    <main className="mx-auto max-w-5xl space-y-4">
-      <Card className="space-y-4">
+    <main className="mx-auto max-w-5xl space-y-5">
+      <Card className="fade-up panel-muted space-y-4 border-primary/15">
         <h1 className="text-2xl font-semibold">Admin Election Console</h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-foreground/70">
           Create election, manage candidates/voters, publish, close, and fetch results.
         </p>
       </Card>
@@ -479,7 +491,7 @@ export default function AdminElectionPage() {
         <div className="rounded border border-border p-3 text-sm">
           <p className="mb-2 font-medium">Available Organizations</p>
           {organizations.length === 0 ? (
-            <p className="text-slate-600">No organizations found.</p>
+            <p className="text-foreground/60">No organizations found.</p>
           ) : (
             <ul className="space-y-1">
               {organizations.map((org) => (
@@ -499,7 +511,7 @@ export default function AdminElectionPage() {
             <Label htmlFor="org">Organization ID</Label>
             <select
               id="org"
-              className="flex h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className={selectClassName}
               value={organizationId}
               onChange={(e) => setOrganizationId(e.target.value)}
               required
@@ -558,7 +570,7 @@ export default function AdminElectionPage() {
             />
           </div>
           <select
-            className="flex h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className={selectClassName}
             value={electionStatusFilter}
             onChange={(e) =>
               setElectionStatusFilter(e.target.value as "all" | ElectionStatus)
@@ -598,13 +610,13 @@ export default function AdminElectionPage() {
         </div>
         <div className="space-y-2">
           {filteredElections.length === 0 ? (
-            <p className="text-sm text-slate-600">No elections found.</p>
+            <p className="text-sm text-foreground/60">No elections found.</p>
           ) : (
             filteredElections.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className="w-full rounded border border-border p-3 text-left text-sm hover:bg-muted"
+                className="w-full rounded-xl border border-border/80 bg-card/70 p-3 text-left text-sm transition duration-200 hover:border-primary/40 hover:bg-card/95"
                 onClick={() => {
                   setElectionId(item.id);
                   setCandidatesPage(1);
@@ -612,7 +624,7 @@ export default function AdminElectionPage() {
                 }}
               >
                 <p className="font-medium">{item.title}</p>
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-foreground/65">
                   {item.id} | {item.status} | candidates: {item.candidate_count} | voters:{" "}
                   {item.voter_count}
                 </p>
@@ -774,7 +786,7 @@ export default function AdminElectionPage() {
                       <div>
                         <p>{candidate.name}</p>
                         {candidate.manifesto ? (
-                          <p className="text-xs text-slate-600">{candidate.manifesto}</p>
+                          <p className="text-xs text-foreground/65">{candidate.manifesto}</p>
                         ) : null}
                       </div>
                       <div className="flex gap-2">
@@ -844,7 +856,7 @@ export default function AdminElectionPage() {
                 >
                   <div>
                     <p>{voter.full_name}</p>
-                    <p className="text-xs text-slate-600">{voter.email}</p>
+                    <p className="text-xs text-foreground/65">{voter.email}</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => onRemoveVoter(voter.user_id)}>
                     Remove
@@ -880,7 +892,7 @@ export default function AdminElectionPage() {
               <p className="text-sm font-medium">Bulk Import (CSV/JSON)</p>
               <div className="flex gap-2">
                 <select
-                  className="flex h-10 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  className={compactSelectClassName}
                   value={importFormat}
                   onChange={(e) => setImportFormat(e.target.value as "csv" | "json")}
                 >
@@ -904,7 +916,7 @@ export default function AdminElectionPage() {
                 </Button>
               </div>
               <textarea
-                className="min-h-28 w-full rounded-md border border-border bg-background p-2 text-sm"
+                className={textareaClassName}
                 value={importPayload}
                 onChange={(e) => setImportPayload(e.target.value)}
                 placeholder={

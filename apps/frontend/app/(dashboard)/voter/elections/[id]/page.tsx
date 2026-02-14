@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { Ballot } from "@/components/voter/ballot";
+import { Card } from "@/components/ui/card";
 import { getBallot } from "@/lib/api";
 import type { BallotResponse } from "@/lib/types";
 
@@ -41,11 +42,26 @@ export default function VoterElectionPage() {
   }, [params.id, router]);
 
   if (loading) {
-    return <main className="mx-auto max-w-3xl">Loading ballot...</main>;
+    return (
+      <main className="mx-auto max-w-3xl">
+        <Card className="fade-up">
+          <p className="text-sm text-foreground/70">Loading ballot...</p>
+        </Card>
+      </main>
+    );
   }
 
   if (error || !ballot) {
-    return <main className="mx-auto max-w-3xl">{error ?? "ballot not found"}</main>;
+    return (
+      <main className="mx-auto max-w-3xl">
+        <Card className="fade-up space-y-2">
+          <h1 className="text-xl font-semibold">Unable to open ballot</h1>
+          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+            {error ?? "ballot not found"}
+          </p>
+        </Card>
+      </main>
+    );
   }
 
   return (
