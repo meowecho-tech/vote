@@ -235,6 +235,9 @@ export default function AdminElectionPage() {
 
   async function onPublish() {
     if (!token || !electionId || !authorized) return;
+    if (!window.confirm("Publish this election now? This will open voting if time window is active.")) {
+      return;
+    }
     setMessage(null);
     try {
       await publishElection(token, electionId);
@@ -248,6 +251,9 @@ export default function AdminElectionPage() {
 
   async function onClose() {
     if (!token || !electionId || !authorized) return;
+    if (!window.confirm("Close this election now? Voting will stop immediately.")) {
+      return;
+    }
     setMessage(null);
     try {
       await closeElection(token, electionId);
@@ -307,6 +313,9 @@ export default function AdminElectionPage() {
 
   async function onDeleteCandidate(candidateId: string) {
     if (!token || !electionId || !authorized) return;
+    if (!window.confirm("Delete this candidate from the election?")) {
+      return;
+    }
 
     try {
       await deleteCandidate(token, electionId, candidateId);
@@ -333,6 +342,9 @@ export default function AdminElectionPage() {
 
   async function onRemoveVoter(userId: string) {
     if (!token || !electionId || !authorized) return;
+    if (!window.confirm("Remove this voter from voter roll?")) {
+      return;
+    }
 
     try {
       await removeVoterRoll(token, electionId, userId);
@@ -345,6 +357,14 @@ export default function AdminElectionPage() {
 
   async function onImportVoterRolls(dryRun: boolean) {
     if (!token || !electionId || !authorized) return;
+    if (
+      !dryRun &&
+      !window.confirm(
+        "Import voter roll now? This will apply all valid rows to the election."
+      )
+    ) {
+      return;
+    }
 
     try {
       const report = await importVoterRolls(token, electionId, {

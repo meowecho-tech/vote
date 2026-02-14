@@ -56,6 +56,7 @@
 - [x] Results loading UI
 - [x] Elections list + search + status filters
 - [x] Pagination controls for elections/candidates/voter-roll lists
+- [x] Confirmation prompts for destructive admin actions
 - [x] Home page auth-state behavior (`Signed in` / `Sign out`)
 - [x] Frontend admin role guard
 - [x] Access token auto-refresh and retry on 401
@@ -93,7 +94,6 @@
 - [ ] Add global auth guard middleware/layout handling
 - [ ] Add standardized API error UI and toast system
 - [ ] Add loading/skeleton states for all admin async sections
-- [ ] Add confirmation modals for destructive actions
 - [ ] Add i18n/localization support (TH/EN)
 
 ### E. Reliability / observability
