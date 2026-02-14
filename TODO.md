@@ -37,7 +37,7 @@
 ### Admin operations
 - [x] Organizations API: list/create
 - [x] Candidate API: list/create/update/delete
-- [x] Voter roll API: list/add/remove
+- [x] Voter roll API: list/add/remove/import (CSV/JSON + validation report)
 
 ### Database / Migration
 - [x] Initial schema migration
@@ -51,6 +51,7 @@
 - [x] Organization management UI
 - [x] Election create/manage UI
 - [x] Candidate and voter-roll management UI
+- [x] Voter-roll bulk import UI (CSV/JSON, dry-run + import report)
 - [x] Results loading UI
 - [x] Elections list + search + status filters
 - [x] Home page auth-state behavior (`Signed in` / `Sign out`)
@@ -83,7 +84,6 @@
 - [ ] Add optional SSO/OIDC provider support
 
 ### C. Election management completeness
-- [ ] Add bulk voter-roll import (CSV/JSON) with validation report
 - [ ] Add pagination for elections/candidates/voter-roll endpoints
 - [ ] Add archived elections and soft-delete policies
 

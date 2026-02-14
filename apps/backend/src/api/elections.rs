@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use actix_web::{delete, get, patch, post, web, HttpResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -5,7 +7,8 @@ use uuid::Uuid;
 use crate::{
     domain::{
         AddVoterRollRequest, CreateCandidateRequest, CreateElectionRequest,
-        CreateOrganizationRequest, UpdateCandidateRequest, UpdateElectionRequest, UserRole,
+        CreateOrganizationRequest, ImportVoterRollRequest, UpdateCandidateRequest,
+        UpdateElectionRequest, UserRole,
     },
     errors::AppError,
     middleware::{require_roles, AuthenticatedUser},
@@ -565,6 +568,100 @@ async fn add_voter_roll(
     Ok(HttpResponse::Created().json(serde_json::json!({ "data": { "ok": true } })))
 }
 
+#[post("/elections/{id}/voter-rolls/import")]
+async fn import_voter_rolls(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    path: web::Path<Uuid>,
+    body: web::Json<ImportVoterRollRequest>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
+    let election_id = path.into_inner();
+    let dry_run = body.dry_run.unwrap_or(true);
+    let parsed = parse_import_identifiers(&body.format, &body.data)?;
+
+    let mut seen_user_ids = HashSet::new();
+    let mut valid_user_ids: Vec<Uuid> = Vec::new();
+    let mut duplicate_rows = 0usize;
+    let mut already_in_roll_rows = 0usize;
+    let mut not_found_rows = 0usize;
+    let mut issues: Vec<_> = Vec::new();
+
+    for (row, identifier) in parsed {
+        let user_row = resolve_user_by_identifier(pool.get_ref(), &identifier).await?;
+        let Some(user_id) = user_row else {
+            not_found_rows += 1;
+            issues.push(
+                serde_json::json!({ "row": row, "identifier": identifier, "reason": "user_not_found" }),
+            );
+            continue;
+        };
+
+        if !seen_user_ids.insert(user_id) {
+            duplicate_rows += 1;
+            issues.push(
+                serde_json::json!({ "row": row, "identifier": identifier, "reason": "duplicate_in_payload" }),
+            );
+            continue;
+        }
+
+        let exists_in_roll = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM voter_rolls WHERE election_id = $1 AND user_id = $2",
+        )
+        .bind(election_id)
+        .bind(user_id)
+        .fetch_one(pool.get_ref())
+        .await
+        .map_err(|_| AppError::Internal)?;
+
+        if exists_in_roll > 0 {
+            already_in_roll_rows += 1;
+            issues.push(
+                serde_json::json!({ "row": row, "identifier": identifier, "reason": "already_in_roll" }),
+            );
+            continue;
+        }
+
+        valid_user_ids.push(user_id);
+    }
+
+    let mut inserted_rows = 0usize;
+    if !dry_run {
+        for user_id in &valid_user_ids {
+            let affected = sqlx::query(
+                r#"
+                INSERT INTO voter_rolls (id, election_id, user_id)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (election_id, user_id) DO NOTHING
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(election_id)
+            .bind(user_id)
+            .execute(pool.get_ref())
+            .await
+            .map_err(|_| AppError::Internal)?
+            .rows_affected();
+
+            inserted_rows += affected as usize;
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": {
+            "dry_run": dry_run,
+            "total_rows": valid_user_ids.len() + duplicate_rows + already_in_roll_rows + not_found_rows,
+            "valid_rows": valid_user_ids.len(),
+            "inserted_rows": inserted_rows,
+            "duplicate_rows": duplicate_rows,
+            "already_in_roll_rows": already_in_roll_rows,
+            "not_found_rows": not_found_rows,
+            "issues": issues
+        }
+    })))
+}
+
 #[delete("/elections/{id}/voter-rolls/{user_id}")]
 async fn remove_voter_roll(
     pool: web::Data<PgPool>,
@@ -600,5 +697,95 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(delete_candidate)
         .service(list_voter_rolls)
         .service(add_voter_roll)
+        .service(import_voter_rolls)
         .service(remove_voter_roll);
+}
+
+fn parse_import_identifiers(format: &str, data: &str) -> Result<Vec<(usize, String)>, AppError> {
+    match format.to_lowercase().as_str() {
+        "json" => parse_json_identifiers(data),
+        "csv" => parse_csv_identifiers(data),
+        _ => Err(AppError::BadRequest(
+            "format must be either 'csv' or 'json'".to_string(),
+        )),
+    }
+}
+
+fn parse_json_identifiers(data: &str) -> Result<Vec<(usize, String)>, AppError> {
+    let values: Vec<String> = serde_json::from_str(data)
+        .map_err(|_| AppError::BadRequest("invalid json, expected string array".to_string()))?;
+
+    let rows: Vec<(usize, String)> = values
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, value)| {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                return None;
+            }
+            Some((idx + 1, trimmed))
+        })
+        .collect();
+
+    Ok(rows)
+}
+
+fn parse_csv_identifiers(data: &str) -> Result<Vec<(usize, String)>, AppError> {
+    let mut rows = Vec::new();
+
+    for (idx, line) in data.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let first_col = trimmed
+            .split(',')
+            .next()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string();
+
+        if line_no == 1 {
+            let header = first_col.to_lowercase();
+            if header == "user_id" || header == "email" || header == "identifier" {
+                continue;
+            }
+        }
+
+        if first_col.is_empty() {
+            return Err(AppError::BadRequest(format!(
+                "invalid csv row {}: missing identifier",
+                line_no
+            )));
+        }
+
+        rows.push((line_no, first_col));
+    }
+
+    Ok(rows)
+}
+
+async fn resolve_user_by_identifier(
+    pool: &PgPool,
+    identifier: &str,
+) -> Result<Option<Uuid>, AppError> {
+    if let Ok(user_id) = Uuid::parse_str(identifier) {
+        let found = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| AppError::Internal)?;
+        return Ok(found);
+    }
+
+    let found =
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE lower(email) = lower($1)")
+            .bind(identifier)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| AppError::Internal)?;
+
+    Ok(found)
 }

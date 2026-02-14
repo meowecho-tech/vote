@@ -6,6 +6,7 @@ import {
   ElectionResultsResponse,
   OrganizationListResponse,
   VoteReceipt,
+  VoterRollImportReport,
   VoterRollResponse,
 } from "@/lib/types";
 
@@ -286,6 +287,22 @@ export async function addVoterRoll(accessToken: string, electionId: string, user
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function importVoterRolls(
+  accessToken: string,
+  electionId: string,
+  payload: {
+    format: "csv" | "json";
+    data: string;
+    dry_run: boolean;
+  }
+): Promise<VoterRollImportReport> {
+  return request<VoterRollImportReport>(`/elections/${electionId}/voter-rolls/import`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
   });
 }
 

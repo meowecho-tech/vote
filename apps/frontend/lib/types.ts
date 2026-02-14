@@ -69,6 +69,25 @@ export type VoterRollResponse = {
   };
 };
 
+export type VoterRollImportIssue = {
+  row: number;
+  identifier: string;
+  reason: "user_not_found" | "duplicate_in_payload" | "already_in_roll";
+};
+
+export type VoterRollImportReport = {
+  data: {
+    dry_run: boolean;
+    total_rows: number;
+    valid_rows: number;
+    inserted_rows: number;
+    duplicate_rows: number;
+    already_in_roll_rows: number;
+    not_found_rows: number;
+    issues: VoterRollImportIssue[];
+  };
+};
+
 export type ElectionResultsResponse = {
   data: {
     election_id: string;

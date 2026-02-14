@@ -22,6 +22,7 @@ import {
   listOrganizations,
   listVoterRolls,
   publishElection,
+  importVoterRolls,
   removeVoterRoll,
   updateElection,
   updateCandidate,
@@ -31,6 +32,7 @@ import type {
   Candidate,
   ElectionSummary,
   Organization,
+  VoterRollImportReport,
   VoterRollEntry,
 } from "@/lib/types";
 
@@ -73,6 +75,9 @@ export default function AdminElectionPage() {
 
   const [voters, setVoters] = useState<VoterRollEntry[]>([]);
   const [voterIdInput, setVoterIdInput] = useState("");
+  const [importFormat, setImportFormat] = useState<"csv" | "json">("csv");
+  const [importPayload, setImportPayload] = useState("");
+  const [importReport, setImportReport] = useState<VoterRollImportReport["data"] | null>(null);
 
   const [results, setResults] = useState<{ name: string; total: number }[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -316,6 +321,25 @@ export default function AdminElectionPage() {
       setMessage("Voter removed from roll");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "remove voter failed");
+    }
+  }
+
+  async function onImportVoterRolls(dryRun: boolean) {
+    if (!token || !electionId || !authorized) return;
+
+    try {
+      const report = await importVoterRolls(token, electionId, {
+        format: importFormat,
+        data: importPayload,
+        dry_run: dryRun,
+      });
+      setImportReport(report.data);
+      if (!dryRun) {
+        await loadElectionData();
+      }
+      setMessage(dryRun ? "Validation completed" : "Import completed");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "import failed");
     }
   }
 
@@ -731,6 +755,65 @@ export default function AdminElectionPage() {
                   </Button>
                 </div>
               ))}
+            </div>
+
+            <div className="space-y-2 rounded border border-border p-3">
+              <p className="text-sm font-medium">Bulk Import (CSV/JSON)</p>
+              <div className="flex gap-2">
+                <select
+                  className="flex h-10 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={importFormat}
+                  onChange={(e) => setImportFormat(e.target.value as "csv" | "json")}
+                >
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void onImportVoterRolls(true)}
+                  disabled={!canManage || !importPayload.trim()}
+                >
+                  Validate (Dry Run)
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void onImportVoterRolls(false)}
+                  disabled={!canManage || !importPayload.trim()}
+                >
+                  Import
+                </Button>
+              </div>
+              <textarea
+                className="min-h-28 w-full rounded-md border border-border bg-background p-2 text-sm"
+                value={importPayload}
+                onChange={(e) => setImportPayload(e.target.value)}
+                placeholder={
+                  importFormat === "csv"
+                    ? "user_id\\n550e8400-e29b-41d4-a716-446655440000\\nuser@example.com"
+                    : '[\"550e8400-e29b-41d4-a716-446655440000\", \"user@example.com\"]'
+                }
+              />
+              {importReport ? (
+                <div className="rounded border border-border p-2 text-xs">
+                  <p>dry_run: {String(importReport.dry_run)}</p>
+                  <p>total_rows: {importReport.total_rows}</p>
+                  <p>valid_rows: {importReport.valid_rows}</p>
+                  <p>inserted_rows: {importReport.inserted_rows}</p>
+                  <p>duplicate_rows: {importReport.duplicate_rows}</p>
+                  <p>already_in_roll_rows: {importReport.already_in_roll_rows}</p>
+                  <p>not_found_rows: {importReport.not_found_rows}</p>
+                  {importReport.issues.length > 0 ? (
+                    <div className="mt-1 space-y-1">
+                      {importReport.issues.slice(0, 10).map((issue, idx) => (
+                        <p key={`${issue.row}-${issue.identifier}-${idx}`}>
+                          row {issue.row}: {issue.identifier} ({issue.reason})
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </Card>
         </div>

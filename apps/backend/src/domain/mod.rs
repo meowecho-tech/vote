@@ -102,6 +102,13 @@ pub struct AddVoterRollRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ImportVoterRollRequest {
+    pub format: String,
+    pub data: String,
+    pub dry_run: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BallotOptionInput {
     pub candidate_id: Uuid,
 }

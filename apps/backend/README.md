@@ -31,6 +31,7 @@ cargo run
 - `DELETE /api/v1/elections/{id}/candidates/{candidate_id}` (admin/election officer)
 - `GET /api/v1/elections/{id}/voter-rolls` (admin/election officer)
 - `POST /api/v1/elections/{id}/voter-rolls` (admin/election officer)
+- `POST /api/v1/elections/{id}/voter-rolls/import` (admin/election officer)
 - `DELETE /api/v1/elections/{id}/voter-rolls/{user_id}` (admin/election officer)
 - `GET /api/v1/elections/{id}/ballot` (voter/admin)
 - `POST /api/v1/elections/{id}/vote` (voter/admin)
