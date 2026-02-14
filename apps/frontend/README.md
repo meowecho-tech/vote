@@ -15,5 +15,5 @@ bun run dev
 - `/` Home
 - `/login` Login
 - `/verify-otp` OTP verification
-- `/admin/elections/new` Election creation
+- `/admin/elections/new` Admin election console (create/manage/publish/close/results)
 - `/voter/elections/{id}` Ballot and vote submission

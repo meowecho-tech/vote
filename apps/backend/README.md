@@ -18,8 +18,15 @@ cargo run
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/elections` (admin/election officer)
+- `GET /api/v1/elections/{id}` (admin/election officer/auditor)
 - `PATCH /api/v1/elections/{id}/publish` (admin/election officer)
 - `PATCH /api/v1/elections/{id}/close` (admin/election officer)
+- `GET /api/v1/elections/{id}/candidates` (admin/election officer/voter)
+- `POST /api/v1/elections/{id}/candidates` (admin/election officer)
+- `DELETE /api/v1/elections/{id}/candidates/{candidate_id}` (admin/election officer)
+- `GET /api/v1/elections/{id}/voter-rolls` (admin/election officer)
+- `POST /api/v1/elections/{id}/voter-rolls` (admin/election officer)
+- `DELETE /api/v1/elections/{id}/voter-rolls/{user_id}` (admin/election officer)
 - `GET /api/v1/elections/{id}/ballot` (voter/admin)
 - `POST /api/v1/elections/{id}/vote` (voter/admin)
 - `GET /api/v1/elections/{id}/receipt/{receipt_id}` (voter/admin)

@@ -72,6 +72,17 @@ pub struct CreateElectionRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCandidateRequest {
+    pub name: String,
+    pub manifesto: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddVoterRollRequest {
+    pub user_id: Uuid,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BallotOptionInput {
     pub candidate_id: Uuid,
 }
