@@ -17,6 +17,8 @@ cargo run
 - `POST /api/v1/auth/verify-otp`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
+- `GET /api/v1/organizations` (admin/election officer/auditor)
+- `POST /api/v1/organizations` (admin/election officer)
 - `POST /api/v1/elections` (admin/election officer)
 - `GET /api/v1/elections/{id}` (admin/election officer/auditor)
 - `PATCH /api/v1/elections/{id}/publish` (admin/election officer)

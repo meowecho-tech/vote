@@ -3,11 +3,73 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    domain::{AddVoterRollRequest, CreateCandidateRequest, CreateElectionRequest, UserRole},
+    domain::{
+        AddVoterRollRequest, CreateCandidateRequest, CreateElectionRequest,
+        CreateOrganizationRequest, UserRole,
+    },
     errors::AppError,
     middleware::{require_roles, AuthenticatedUser},
     services::election,
 };
+
+#[get("/organizations")]
+async fn list_organizations(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+) -> Result<HttpResponse, AppError> {
+    require_roles(
+        &auth,
+        &[
+            UserRole::Admin,
+            UserRole::ElectionOfficer,
+            UserRole::Auditor,
+        ],
+    )?;
+
+    let rows = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM organizations ORDER BY created_at DESC",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    let items: Vec<_> = rows
+        .into_iter()
+        .map(|(id, name)| serde_json::json!({ "id": id, "name": name }))
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": { "organizations": items }
+    })))
+}
+
+#[post("/organizations")]
+async fn create_organization(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    body: web::Json<CreateOrganizationRequest>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest(
+            "organization name is required".to_string(),
+        ));
+    }
+
+    let organization_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO organizations (id, name) VALUES ($1, $2)")
+        .bind(organization_id)
+        .bind(name)
+        .execute(pool.get_ref())
+        .await
+        .map_err(|_| AppError::Internal)?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "data": { "organization_id": organization_id, "name": name }
+    })))
+}
 
 #[post("/elections")]
 async fn create_election(
@@ -359,7 +421,9 @@ async fn remove_voter_roll(
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(create_election)
+    cfg.service(list_organizations)
+        .service(create_organization)
+        .service(create_election)
         .service(get_election)
         .service(publish)
         .service(close)

@@ -72,6 +72,11 @@ pub struct CreateElectionRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CreateOrganizationRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateCandidateRequest {
     pub name: String,
     pub manifesto: Option<String>,

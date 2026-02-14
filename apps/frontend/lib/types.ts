@@ -62,3 +62,14 @@ export type ElectionResultsResponse = {
     }[];
   };
 };
+
+export type Organization = {
+  id: string;
+  name: string;
+};
+
+export type OrganizationListResponse = {
+  data: {
+    organizations: Organization[];
+  };
+};

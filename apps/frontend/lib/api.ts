@@ -3,6 +3,7 @@ import {
   CandidateListResponse,
   ElectionDetail,
   ElectionResultsResponse,
+  OrganizationListResponse,
   VoteReceipt,
   VoterRollResponse,
 } from "@/lib/types";
@@ -91,6 +92,20 @@ export async function createElection(
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify(payload),
+  });
+}
+
+export async function listOrganizations(accessToken: string): Promise<OrganizationListResponse> {
+  return request<OrganizationListResponse>("/organizations", {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function createOrganization(accessToken: string, name: string) {
+  return request<{ data: { organization_id: string; name: string } }>("/organizations", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ name }),
   });
 }
 

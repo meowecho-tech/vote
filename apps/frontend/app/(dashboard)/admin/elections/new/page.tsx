@@ -12,15 +12,17 @@ import {
   closeElection,
   createCandidate,
   createElection,
+  createOrganization,
   deleteCandidate,
   getElection,
   getElectionResults,
   listCandidates,
+  listOrganizations,
   listVoterRolls,
   publishElection,
   removeVoterRoll,
 } from "@/lib/api";
-import type { Candidate, VoterRollEntry } from "@/lib/types";
+import type { Candidate, Organization, VoterRollEntry } from "@/lib/types";
 
 type ElectionStatus = "draft" | "published" | "closed";
 
@@ -28,6 +30,8 @@ export default function AdminElectionPage() {
   const [token, setToken] = useState<string | null>(null);
 
   const [organizationId, setOrganizationId] = useState("");
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizationName, setOrganizationName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [opensAt, setOpensAt] = useState("");
@@ -51,8 +55,48 @@ export default function AdminElectionPage() {
   const canManage = useMemo(() => Boolean(token && electionId), [token, electionId]);
 
   useEffect(() => {
-    setToken(localStorage.getItem("vote_access_token"));
+    const accessToken = localStorage.getItem("vote_access_token");
+    setToken(accessToken);
+
+    if (accessToken) {
+      void loadOrganizations(accessToken);
+    }
   }, []);
+
+  async function loadOrganizations(accessTokenOverride?: string) {
+    const accessToken = accessTokenOverride ?? token;
+    if (!accessToken) return;
+
+    try {
+      const res = await listOrganizations(accessToken);
+      setOrganizations(res.data.organizations);
+      if (!organizationId && res.data.organizations.length > 0) {
+        setOrganizationId(res.data.organizations[0].id);
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "failed to load organizations");
+    }
+  }
+
+  async function onCreateOrganization(event: FormEvent) {
+    event.preventDefault();
+    setMessage(null);
+
+    if (!token) {
+      setMessage("Please login as admin first");
+      return;
+    }
+
+    try {
+      const res = await createOrganization(token, organizationName);
+      setOrganizationName("");
+      await loadOrganizations();
+      setOrganizationId(res.data.organization_id);
+      setMessage(`Organization created: ${res.data.name}`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "failed to create organization");
+    }
+  }
 
   async function onCreateElection(event: FormEvent) {
     event.preventDefault();
@@ -209,11 +253,56 @@ export default function AdminElectionPage() {
       </Card>
 
       <Card className="space-y-4">
-        <h2 className="text-xl font-semibold">1) Create Election</h2>
+        <h2 className="text-xl font-semibold">1) Organization Management</h2>
+        <form onSubmit={onCreateOrganization} className="flex flex-col gap-2 md:flex-row">
+          <Input
+            placeholder="Organization name"
+            value={organizationName}
+            onChange={(e) => setOrganizationName(e.target.value)}
+            required
+          />
+          <Button type="submit" disabled={!token}>
+            Create Organization
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void loadOrganizations()} disabled={!token}>
+            Refresh List
+          </Button>
+        </form>
+        <div className="rounded border border-border p-3 text-sm">
+          <p className="mb-2 font-medium">Available Organizations</p>
+          {organizations.length === 0 ? (
+            <p className="text-slate-600">No organizations found.</p>
+          ) : (
+            <ul className="space-y-1">
+              {organizations.map((org) => (
+                <li key={org.id}>
+                  {org.name} ({org.id})
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="text-xl font-semibold">2) Create Election</h2>
         <form onSubmit={onCreateElection} className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="org">Organization ID</Label>
-            <Input id="org" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required />
+            <select
+              id="org"
+              className="flex h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={organizationId}
+              onChange={(e) => setOrganizationId(e.target.value)}
+              required
+            >
+              <option value="">Select organization</option>
+              {organizations.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name} ({org.id.slice(0, 8)}...)
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="title">Title</Label>
@@ -239,7 +328,7 @@ export default function AdminElectionPage() {
       </Card>
 
       <Card className="space-y-4">
-        <h2 className="text-xl font-semibold">2) Manage Election</h2>
+        <h2 className="text-xl font-semibold">3) Manage Election</h2>
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
           <div className="w-full space-y-2">
             <Label htmlFor="election_id">Election ID</Label>
