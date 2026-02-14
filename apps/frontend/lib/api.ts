@@ -10,6 +10,48 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
 
+type AuthHeaders = {
+  Authorization?: string;
+  [key: string]: string | undefined;
+};
+
+function canUseBrowserStorage() {
+  return typeof window !== "undefined" && typeof localStorage !== "undefined";
+}
+
+async function tryRefreshAccessToken(): Promise<string | null> {
+  if (!canUseBrowserStorage()) {
+    return null;
+  }
+
+  const refreshToken = localStorage.getItem("vote_refresh_token");
+  if (!refreshToken) {
+    return null;
+  }
+
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    localStorage.removeItem("vote_access_token");
+    localStorage.removeItem("vote_refresh_token");
+    return null;
+  }
+
+  const data = (await res.json()) as { data?: { access_token?: string; refresh_token?: string } };
+  if (!data.data?.access_token || !data.data?.refresh_token) {
+    return null;
+  }
+
+  localStorage.setItem("vote_access_token", data.data.access_token);
+  localStorage.setItem("vote_refresh_token", data.data.refresh_token);
+  return data.data.access_token;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -21,6 +63,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
+    const headers = (init?.headers ?? {}) as AuthHeaders;
+    const authorizationHeader = headers.Authorization ?? headers.authorization;
+    const hasBearer = typeof authorizationHeader === "string" && authorizationHeader.startsWith("Bearer ");
+
+    if (res.status === 401 && hasBearer) {
+      const newAccessToken = await tryRefreshAccessToken();
+      if (newAccessToken) {
+        const retryHeaders = {
+          ...(init?.headers ?? {}),
+          Authorization: `Bearer ${newAccessToken}`,
+        };
+
+        const retryRes = await fetch(`${API_BASE}${path}`, {
+          ...init,
+          headers: {
+            "Content-Type": "application/json",
+            ...retryHeaders,
+          },
+          cache: "no-store",
+        });
+
+        if (retryRes.ok) {
+          return retryRes.json() as Promise<T>;
+        }
+      }
+    }
+
     const body = await res.json().catch(() => ({ error: "request failed" }));
     throw new Error(body.error || "request failed");
   }
