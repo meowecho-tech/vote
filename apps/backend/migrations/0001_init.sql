@@ -11,8 +11,21 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   full_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'voter' CHECK (role IN ('admin', 'election_officer', 'auditor', 'voter')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT;
+UPDATE users SET role = 'voter' WHERE role IS NULL;
+ALTER TABLE users ALTER COLUMN role SET DEFAULT 'voter';
+ALTER TABLE users ALTER COLUMN role SET NOT NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'election_officer', 'auditor', 'voter'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS one_time_codes (
   id UUID PRIMARY KEY,
@@ -20,6 +33,23 @@ CREATE TABLE IF NOT EXISTS one_time_codes (
   code TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   consumed BOOLEAN NOT NULL DEFAULT FALSE,
+  attempt_count INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL DEFAULT 5,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE one_time_codes ADD COLUMN IF NOT EXISTS attempt_count INT DEFAULT 0;
+ALTER TABLE one_time_codes ADD COLUMN IF NOT EXISTS max_attempts INT DEFAULT 5;
+UPDATE one_time_codes SET attempt_count = 0 WHERE attempt_count IS NULL;
+UPDATE one_time_codes SET max_attempts = 5 WHERE max_attempts IS NULL;
+ALTER TABLE one_time_codes ALTER COLUMN attempt_count SET NOT NULL;
+ALTER TABLE one_time_codes ALTER COLUMN max_attempts SET NOT NULL;
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

@@ -2,19 +2,33 @@ use actix_web::{get, patch, post, web, HttpResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{domain::CreateElectionRequest, errors::AppError, services::election};
+use crate::{
+    domain::{CreateElectionRequest, UserRole},
+    errors::AppError,
+    middleware::{require_roles, AuthenticatedUser},
+    services::election,
+};
 
 #[post("/elections")]
 async fn create_election(
     pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
     body: web::Json<CreateElectionRequest>,
 ) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
     let election_id = election::create(pool.get_ref(), body.into_inner()).await?;
     Ok(HttpResponse::Created().json(serde_json::json!({ "data": { "election_id": election_id } })))
 }
 
 #[patch("/elections/{id}/publish")]
-async fn publish(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Result<HttpResponse, AppError> {
+async fn publish(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
     let id = path.into_inner();
     let affected =
         sqlx::query("UPDATE elections SET status = 'published' WHERE id = $1 AND status = 'draft'")
@@ -34,7 +48,13 @@ async fn publish(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Result<HttpR
 }
 
 #[patch("/elections/{id}/close")]
-async fn close(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Result<HttpResponse, AppError> {
+async fn close(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
     let id = path.into_inner();
     let affected = sqlx::query(
         "UPDATE elections SET status = 'closed' WHERE id = $1 AND status = 'published'",
@@ -55,7 +75,20 @@ async fn close(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Result<HttpRes
 }
 
 #[get("/elections/{id}/results")]
-async fn results(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Result<HttpResponse, AppError> {
+async fn results(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(
+        &auth,
+        &[
+            UserRole::Admin,
+            UserRole::ElectionOfficer,
+            UserRole::Auditor,
+        ],
+    )?;
+
     let id = path.into_inner();
 
     let status = sqlx::query_scalar::<_, String>("SELECT status FROM elections WHERE id = $1")

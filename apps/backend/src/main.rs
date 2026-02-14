@@ -4,11 +4,14 @@ mod db;
 mod domain;
 mod errors;
 mod middleware;
+mod security;
 mod services;
+mod state;
 
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use config::AppConfig;
+use state::AppState;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -23,6 +26,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = AppConfig::from_env();
     let pool = db::connect(&config.database_url).await?;
+    let state = AppState::new();
 
     let bind_addr = format!("{}:{}", config.host, config.port);
     tracing::info!("starting API at {}", bind_addr);
@@ -42,6 +46,8 @@ async fn main() -> anyhow::Result<()> {
                     .max_age(3600),
             )
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(config.clone()))
+            .app_data(web::Data::new(state.clone()))
             .configure(api::configure)
     })
     .bind(bind_addr)?

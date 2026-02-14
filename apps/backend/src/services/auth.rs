@@ -5,8 +5,13 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    domain::{LoginRequest, RegisterRequest, VerifyOtpRequest},
+    config::AppConfig,
+    domain::{
+        AuthTokensResponse, LoginRequest, RefreshTokenRequest, RegisterRequest, UserRole,
+        VerifyOtpRequest,
+    },
     errors::AppError,
+    security::jwt::{create_access_token, generate_refresh_token, hash_refresh_token},
 };
 
 pub async fn register(pool: &PgPool, input: RegisterRequest) -> Result<(), AppError> {
@@ -16,10 +21,10 @@ pub async fn register(pool: &PgPool, input: RegisterRequest) -> Result<(), AppEr
         .map_err(|_| AppError::Internal)?
         .to_string();
 
-    sqlx::query(
+    let result = sqlx::query(
         r#"
-        INSERT INTO users (id, email, password_hash, full_name)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO users (id, email, password_hash, full_name, role)
+        VALUES ($1, $2, $3, $4, 'voter')
         ON CONFLICT (email) DO NOTHING
         "#,
     )
@@ -30,6 +35,10 @@ pub async fn register(pool: &PgPool, input: RegisterRequest) -> Result<(), AppEr
     .execute(pool)
     .await
     .map_err(|_| AppError::Internal)?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::Conflict("email already exists".to_string()));
+    }
 
     Ok(())
 }
@@ -60,8 +69,8 @@ pub async fn login(pool: &PgPool, input: LoginRequest) -> Result<(), AppError> {
 
     sqlx::query(
         r#"
-        INSERT INTO one_time_codes (id, user_id, code, expires_at, consumed)
-        VALUES ($1, $2, $3, $4, false)
+        INSERT INTO one_time_codes (id, user_id, code, expires_at, consumed, attempt_count, max_attempts)
+        VALUES ($1, $2, $3, $4, false, 0, 5)
         "#,
     )
     .bind(Uuid::new_v4())
@@ -75,25 +84,47 @@ pub async fn login(pool: &PgPool, input: LoginRequest) -> Result<(), AppError> {
     Ok(())
 }
 
-pub async fn verify_otp(pool: &PgPool, input: VerifyOtpRequest) -> Result<String, AppError> {
-    let row = sqlx::query_as::<_, (Uuid, Uuid, chrono::DateTime<Utc>, bool)>(
+pub async fn verify_otp(
+    pool: &PgPool,
+    config: &AppConfig,
+    input: VerifyOtpRequest,
+) -> Result<AuthTokensResponse, AppError> {
+    let row = sqlx::query_as::<_, (Uuid, Uuid, String, chrono::DateTime<Utc>, bool, i32, i32, String)>(
         r#"
-        SELECT c.id, c.user_id, c.expires_at, c.consumed
+        SELECT c.id, c.user_id, c.code, c.expires_at, c.consumed, c.attempt_count, c.max_attempts, u.role
         FROM one_time_codes c
         JOIN users u ON u.id = c.user_id
-        WHERE u.email = $1 AND c.code = $2
+        WHERE u.email = $1
         ORDER BY c.created_at DESC
         LIMIT 1
         "#,
     )
     .bind(&input.email)
-    .bind(&input.code)
     .fetch_optional(pool)
     .await
     .map_err(|_| AppError::Internal)?;
 
-    let (code_id, user_id, expires_at, consumed) = row.ok_or(AppError::Unauthorized)?;
-    if consumed || expires_at < Utc::now() {
+    let (
+        code_id,
+        user_id,
+        expected_code,
+        expires_at,
+        consumed,
+        attempt_count,
+        max_attempts,
+        role_raw,
+    ) = row.ok_or(AppError::Unauthorized)?;
+
+    if consumed || expires_at < Utc::now() || attempt_count >= max_attempts {
+        return Err(AppError::Unauthorized);
+    }
+
+    if expected_code != input.code {
+        sqlx::query("UPDATE one_time_codes SET attempt_count = attempt_count + 1 WHERE id = $1")
+            .bind(code_id)
+            .execute(pool)
+            .await
+            .map_err(|_| AppError::Internal)?;
         return Err(AppError::Unauthorized);
     }
 
@@ -103,6 +134,92 @@ pub async fn verify_otp(pool: &PgPool, input: VerifyOtpRequest) -> Result<String
         .await
         .map_err(|_| AppError::Internal)?;
 
-    // Placeholder token format for MVP scaffold.
-    Ok(format!("mvp-token-{}", user_id))
+    let role = UserRole::from_db(&role_raw).ok_or(AppError::Internal)?;
+    issue_tokens(pool, config, user_id, role).await
+}
+
+pub async fn refresh_tokens(
+    pool: &PgPool,
+    config: &AppConfig,
+    input: RefreshTokenRequest,
+) -> Result<AuthTokensResponse, AppError> {
+    let token_hash = hash_refresh_token(&input.refresh_token);
+
+    let row = sqlx::query_as::<_, (Uuid, String, chrono::DateTime<Utc>, bool)>(
+        r#"
+        SELECT r.user_id, u.role, r.expires_at, r.revoked_at IS NOT NULL
+        FROM refresh_tokens r
+        JOIN users u ON u.id = r.user_id
+        WHERE r.token_hash = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    let (user_id, role_raw, expires_at, revoked) = row.ok_or(AppError::Unauthorized)?;
+    if revoked || expires_at < Utc::now() {
+        return Err(AppError::Unauthorized);
+    }
+
+    sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1")
+        .bind(&token_hash)
+        .execute(pool)
+        .await
+        .map_err(|_| AppError::Internal)?;
+
+    let role = UserRole::from_db(&role_raw).ok_or(AppError::Internal)?;
+    issue_tokens(pool, config, user_id, role).await
+}
+
+pub async fn logout(pool: &PgPool, input: RefreshTokenRequest) -> Result<(), AppError> {
+    let token_hash = hash_refresh_token(&input.refresh_token);
+
+    sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1")
+        .bind(token_hash)
+        .execute(pool)
+        .await
+        .map_err(|_| AppError::Internal)?;
+
+    Ok(())
+}
+
+async fn issue_tokens(
+    pool: &PgPool,
+    config: &AppConfig,
+    user_id: Uuid,
+    role: UserRole,
+) -> Result<AuthTokensResponse, AppError> {
+    let access_token = create_access_token(
+        user_id,
+        role,
+        &config.jwt_secret,
+        config.access_token_ttl_minutes,
+    )
+    .map_err(|_| AppError::Internal)?;
+
+    let refresh_token = generate_refresh_token();
+    let token_hash = hash_refresh_token(&refresh_token);
+    let expires_at = Utc::now() + Duration::days(config.refresh_token_ttl_days);
+
+    sqlx::query(
+        r#"
+        INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(token_hash)
+    .bind(expires_at)
+    .execute(pool)
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    Ok(AuthTokensResponse {
+        access_token,
+        refresh_token,
+    })
 }

@@ -14,6 +14,8 @@ pub enum AppError {
     BadRequest(String),
     #[error("conflict: {0}")]
     Conflict(String),
+    #[error("too many requests")]
+    TooManyRequests,
     #[error("internal server error")]
     Internal,
 }
@@ -31,6 +33,7 @@ impl ResponseError for AppError {
             AppError::Forbidden => StatusCode::FORBIDDEN,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             AppError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

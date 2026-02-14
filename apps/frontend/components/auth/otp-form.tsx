@@ -25,6 +25,7 @@ export function OtpForm() {
     try {
       const result = await verifyOtp({ email, code });
       localStorage.setItem("vote_access_token", result.data.access_token);
+      localStorage.setItem("vote_refresh_token", result.data.refresh_token);
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "verification failed");

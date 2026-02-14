@@ -2,6 +2,36 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UserRole {
+    Admin,
+    ElectionOfficer,
+    Auditor,
+    Voter,
+}
+
+impl UserRole {
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "admin" => Some(Self::Admin),
+            "election_officer" => Some(Self::ElectionOfficer),
+            "auditor" => Some(Self::Auditor),
+            "voter" => Some(Self::Voter),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Admin => "admin",
+            Self::ElectionOfficer => "election_officer",
+            Self::Auditor => "auditor",
+            Self::Voter => "voter",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub email: String,
@@ -19,6 +49,17 @@ pub struct LoginRequest {
 pub struct VerifyOtpRequest {
     pub email: String,
     pub code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RefreshTokenRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthTokensResponse {
+    pub access_token: String,
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

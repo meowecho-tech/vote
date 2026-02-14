@@ -9,17 +9,17 @@ Production-oriented voting platform scaffold with:
 - `apps/frontend`: Next.js app (voter/admin web)
 - `apps/backend`: Rust API service
 - `infra`: Docker Compose and environment examples
+- `scripts`: Seed and automated test scripts
 
 ## Quick Start
 
-### 1) Infrastructure
-
 ```bash
 cp infra/.env.example infra/.env
-docker compose -f infra/docker-compose.yml up -d
+make infra-up
+make migrate
 ```
 
-### 2) Backend
+Terminal 1:
 
 ```bash
 cd apps/backend
@@ -27,7 +27,7 @@ cp .env.example .env
 cargo run
 ```
 
-### 3) Frontend
+Terminal 2:
 
 ```bash
 cd apps/frontend
@@ -36,11 +36,21 @@ bun install
 bun run dev
 ```
 
+## Useful Commands
+
+- `make seed` - create demo org/election/users/candidates/voter-roll
+- `make test-backend` - run Rust tests
+- `make test-integration` - run API integration flow tests
+- `make test-frontend-smoke` - smoke test key frontend routes
+
 ## API Base
 
 - `http://localhost:8080/api/v1`
 
-## Notes
+## Security Features (MVP+)
 
-- This scaffold implements core flows for election management and vote submission with idempotency and audit events.
-- OTP delivery is currently simulated by writing OTP records to database; integrate SES/SMTP for production.
+- JWT access tokens + refresh token rotation
+- RBAC for admin/election-officer/auditor/voter
+- OTP retry limit
+- In-memory rate limiting for auth endpoints
+- Idempotent vote submission and one-person-one-vote constraint

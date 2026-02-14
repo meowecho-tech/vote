@@ -3,14 +3,20 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    domain::CastVoteRequest, errors::AppError, middleware::AuthenticatedUser, services::vote,
+    domain::{CastVoteRequest, UserRole},
+    errors::AppError,
+    middleware::{require_roles, AuthenticatedUser},
+    services::vote,
 };
 
 #[get("/elections/{id}/ballot")]
 async fn get_ballot(
     pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Voter, UserRole::Admin])?;
+
     let election_id = path.into_inner();
 
     let election =
@@ -51,6 +57,8 @@ async fn cast_vote(
     path: web::Path<Uuid>,
     body: web::Json<CastVoteRequest>,
 ) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Voter, UserRole::Admin])?;
+
     let vote_receipt = vote::cast(
         pool.get_ref(),
         path.into_inner(),
@@ -68,6 +76,8 @@ async fn get_receipt(
     auth: AuthenticatedUser,
     path: web::Path<(Uuid, Uuid)>,
 ) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Voter, UserRole::Admin])?;
+
     let (election_id, receipt_id) = path.into_inner();
 
     let row = sqlx::query_as::<_, (Uuid, Uuid, chrono::DateTime<chrono::Utc>)>(

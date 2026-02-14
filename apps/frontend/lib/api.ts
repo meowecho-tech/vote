@@ -35,7 +35,14 @@ export async function login(input: { email: string; password: string }) {
 }
 
 export async function verifyOtp(input: { email: string; code: string }) {
-  return request<{ data: { access_token: string } }>("/auth/verify-otp", {
+  return request<{ data: { access_token: string; refresh_token: string } }>("/auth/verify-otp", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function refresh(input: { refresh_token: string }) {
+  return request<{ data: { access_token: string; refresh_token: string } }>("/auth/refresh", {
     method: "POST",
     body: JSON.stringify(input),
   });
