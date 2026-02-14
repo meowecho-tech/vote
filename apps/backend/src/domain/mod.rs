@@ -72,6 +72,14 @@ pub struct CreateElectionRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateElectionRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub opens_at: DateTime<Utc>,
+    pub closes_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateOrganizationRequest {
     pub name: String,
 }

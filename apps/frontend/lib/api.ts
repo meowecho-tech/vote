@@ -185,6 +185,23 @@ export async function getElection(accessToken: string, electionId: string): Prom
   });
 }
 
+export async function updateElection(
+  accessToken: string,
+  electionId: string,
+  payload: {
+    title: string;
+    description: string | null;
+    opens_at: string;
+    closes_at: string;
+  }
+) {
+  return request<{ data: { ok: boolean } }>(`/elections/${electionId}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function listElections(accessToken: string): Promise<ElectionListResponse> {
   return request<ElectionListResponse>("/elections", {
     headers: authHeaders(accessToken),

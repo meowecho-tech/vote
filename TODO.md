@@ -22,6 +22,7 @@
 
 ### Election / Voting domain
 - [x] Create election (with validation)
+- [x] Update election (title/description/window while draft)
 - [x] Publish election
 - [x] Close election
 - [x] Get election detail
@@ -82,7 +83,6 @@
 - [ ] Add optional SSO/OIDC provider support
 
 ### C. Election management completeness
-- [ ] Add election update endpoint (title/description/window before publish)
 - [ ] Add bulk voter-roll import (CSV/JSON) with validation report
 - [ ] Add pagination for elections/candidates/voter-roll endpoints
 - [ ] Add archived elections and soft-delete policies

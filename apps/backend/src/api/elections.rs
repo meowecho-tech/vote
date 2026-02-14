@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::{
     domain::{
         AddVoterRollRequest, CreateCandidateRequest, CreateElectionRequest,
-        CreateOrganizationRequest, UpdateCandidateRequest, UserRole,
+        CreateOrganizationRequest, UpdateCandidateRequest, UpdateElectionRequest, UserRole,
     },
     errors::AppError,
     middleware::{require_roles, AuthenticatedUser},
@@ -225,6 +225,50 @@ async fn get_election(
             "voter_count": voter_count
         }
     })))
+}
+
+#[patch("/elections/{id}")]
+async fn update_election(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateElectionRequest>,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
+
+    let election_id = path.into_inner();
+    let input = body.into_inner();
+
+    if input.opens_at >= input.closes_at {
+        return Err(AppError::BadRequest(
+            "opens_at must be earlier than closes_at".to_string(),
+        ));
+    }
+
+    let affected = sqlx::query(
+        r#"
+        UPDATE elections
+        SET title = $1, description = $2, opens_at = $3, closes_at = $4
+        WHERE id = $5 AND status = 'draft'
+        "#,
+    )
+    .bind(input.title.trim())
+    .bind(input.description)
+    .bind(input.opens_at)
+    .bind(input.closes_at)
+    .bind(election_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|_| AppError::Internal)?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(AppError::Conflict(
+            "only draft elections can be updated".to_string(),
+        ));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": { "ok": true } })))
 }
 
 #[patch("/elections/{id}/publish")]
@@ -546,6 +590,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(create_election)
         .service(list_elections)
         .service(get_election)
+        .service(update_election)
         .service(publish)
         .service(close)
         .service(results)

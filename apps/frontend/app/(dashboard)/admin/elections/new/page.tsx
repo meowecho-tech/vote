@@ -23,6 +23,7 @@ import {
   listVoterRolls,
   publishElection,
   removeVoterRoll,
+  updateElection,
   updateCandidate,
 } from "@/lib/api";
 import { getRoleFromAccessToken } from "@/lib/auth";
@@ -58,6 +59,10 @@ export default function AdminElectionPage() {
   const [meta, setMeta] = useState<{ title: string; candidateCount: number; voterCount: number } | null>(
     null
   );
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editOpensAt, setEditOpensAt] = useState("");
+  const [editClosesAt, setEditClosesAt] = useState("");
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateName, setCandidateName] = useState("");
@@ -193,6 +198,10 @@ export default function AdminElectionPage() {
         candidateCount: election.data.candidate_count,
         voterCount: election.data.voter_count,
       });
+      setEditTitle(election.data.title);
+      setEditDescription(election.data.description ?? "");
+      setEditOpensAt(new Date(election.data.opens_at).toISOString().slice(0, 16));
+      setEditClosesAt(new Date(election.data.closes_at).toISOString().slice(0, 16));
       setCandidates(candidateList.data.candidates);
       setVoters(voterList.data.voters);
     } catch (err) {
@@ -318,6 +327,25 @@ export default function AdminElectionPage() {
       setResults(res.data.results.map((item) => ({ name: item.name, total: item.total })));
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "failed to load results");
+    }
+  }
+
+  async function onUpdateElection(event: FormEvent) {
+    event.preventDefault();
+    if (!token || !electionId || !authorized) return;
+
+    try {
+      await updateElection(token, electionId, {
+        title: editTitle,
+        description: editDescription || null,
+        opens_at: new Date(editOpensAt).toISOString(),
+        closes_at: new Date(editClosesAt).toISOString(),
+      });
+      await loadElectionData();
+      await loadElections();
+      setMessage("Election updated");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "failed to update election");
     }
   }
 
@@ -542,6 +570,58 @@ export default function AdminElectionPage() {
             </p>
           </div>
         ) : null}
+
+        <Card className="space-y-3">
+          <h3 className="font-semibold">Update Election (Draft Only)</h3>
+          <form onSubmit={onUpdateElection} className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1 md:col-span-2">
+              <Label htmlFor="edit_title">Title</Label>
+              <Input
+                id="edit_title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                disabled={!canManage || status !== "draft"}
+                required
+              />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label htmlFor="edit_description">Description</Label>
+              <Input
+                id="edit_description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                disabled={!canManage || status !== "draft"}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit_opens">Opens At</Label>
+              <Input
+                id="edit_opens"
+                type="datetime-local"
+                value={editOpensAt}
+                onChange={(e) => setEditOpensAt(e.target.value)}
+                disabled={!canManage || status !== "draft"}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit_closes">Closes At</Label>
+              <Input
+                id="edit_closes"
+                type="datetime-local"
+                value={editClosesAt}
+                onChange={(e) => setEditClosesAt(e.target.value)}
+                disabled={!canManage || status !== "draft"}
+                required
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Button type="submit" disabled={!canManage || status !== "draft"}>
+                Save Election Changes
+              </Button>
+            </div>
+          </form>
+        </Card>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="space-y-3">
