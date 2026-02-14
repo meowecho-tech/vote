@@ -83,6 +83,86 @@ async fn create_election(
     Ok(HttpResponse::Created().json(serde_json::json!({ "data": { "election_id": election_id } })))
 }
 
+#[get("/elections")]
+async fn list_elections(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+) -> Result<HttpResponse, AppError> {
+    require_roles(
+        &auth,
+        &[
+            UserRole::Admin,
+            UserRole::ElectionOfficer,
+            UserRole::Auditor,
+        ],
+    )?;
+
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
+            i64,
+            i64,
+        ),
+    >(
+        r#"
+        SELECT
+          e.id,
+          e.title,
+          e.description,
+          e.status,
+          e.opens_at,
+          e.closes_at,
+          COUNT(DISTINCT c.id)::bigint AS candidate_count,
+          COUNT(DISTINCT vr.user_id)::bigint AS voter_count
+        FROM elections e
+        LEFT JOIN candidates c ON c.election_id = e.id
+        LEFT JOIN voter_rolls vr ON vr.election_id = e.id
+        GROUP BY e.id, e.title, e.description, e.status, e.opens_at, e.closes_at
+        ORDER BY e.created_at DESC
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    let items: Vec<_> = rows
+        .into_iter()
+        .map(
+            |(
+                id,
+                title,
+                description,
+                status,
+                opens_at,
+                closes_at,
+                candidate_count,
+                voter_count,
+            )| {
+                serde_json::json!({
+                    "id": id,
+                    "title": title,
+                    "description": description,
+                    "status": status,
+                    "opens_at": opens_at,
+                    "closes_at": closes_at,
+                    "candidate_count": candidate_count,
+                    "voter_count": voter_count
+                })
+            },
+        )
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": { "elections": items }
+    })))
+}
+
 #[get("/elections/{id}")]
 async fn get_election(
     pool: web::Data<PgPool>,
@@ -424,6 +504,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(list_organizations)
         .service(create_organization)
         .service(create_election)
+        .service(list_elections)
         .service(get_election)
         .service(publish)
         .service(close)

@@ -20,6 +20,7 @@ cargo run
 - `GET /api/v1/organizations` (admin/election officer/auditor)
 - `POST /api/v1/organizations` (admin/election officer)
 - `POST /api/v1/elections` (admin/election officer)
+- `GET /api/v1/elections` (admin/election officer/auditor)
 - `GET /api/v1/elections/{id}` (admin/election officer/auditor)
 - `PATCH /api/v1/elections/{id}/publish` (admin/election officer)
 - `PATCH /api/v1/elections/{id}/close` (admin/election officer)

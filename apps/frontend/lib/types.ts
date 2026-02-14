@@ -34,6 +34,23 @@ export type ElectionDetail = {
   };
 };
 
+export type ElectionSummary = {
+  id: string;
+  title: string;
+  description?: string | null;
+  status: "draft" | "published" | "closed";
+  opens_at: string;
+  closes_at: string;
+  candidate_count: number;
+  voter_count: number;
+};
+
+export type ElectionListResponse = {
+  data: {
+    elections: ElectionSummary[];
+  };
+};
+
 export type CandidateListResponse = {
   data: {
     candidates: Candidate[];

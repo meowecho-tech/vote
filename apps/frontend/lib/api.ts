@@ -2,6 +2,7 @@ import {
   BallotResponse,
   CandidateListResponse,
   ElectionDetail,
+  ElectionListResponse,
   ElectionResultsResponse,
   OrganizationListResponse,
   VoteReceipt,
@@ -180,6 +181,12 @@ export async function createOrganization(accessToken: string, name: string) {
 
 export async function getElection(accessToken: string, electionId: string): Promise<ElectionDetail> {
   return request<ElectionDetail>(`/elections/${electionId}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listElections(accessToken: string): Promise<ElectionListResponse> {
+  return request<ElectionListResponse>("/elections", {
     headers: authHeaders(accessToken),
   });
 }

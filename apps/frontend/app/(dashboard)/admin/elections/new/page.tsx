@@ -18,13 +18,19 @@ import {
   getElection,
   getElectionResults,
   listCandidates,
+  listElections,
   listOrganizations,
   listVoterRolls,
   publishElection,
   removeVoterRoll,
 } from "@/lib/api";
 import { getRoleFromAccessToken } from "@/lib/auth";
-import type { Candidate, Organization, VoterRollEntry } from "@/lib/types";
+import type {
+  Candidate,
+  ElectionSummary,
+  Organization,
+  VoterRollEntry,
+} from "@/lib/types";
 
 type ElectionStatus = "draft" | "published" | "closed";
 
@@ -44,6 +50,9 @@ export default function AdminElectionPage() {
   const [createResult, setCreateResult] = useState<string | null>(null);
 
   const [electionId, setElectionId] = useState("");
+  const [elections, setElections] = useState<ElectionSummary[]>([]);
+  const [electionSearch, setElectionSearch] = useState("");
+  const [electionStatusFilter, setElectionStatusFilter] = useState<"all" | ElectionStatus>("all");
   const [status, setStatus] = useState<ElectionStatus | null>(null);
   const [meta, setMeta] = useState<{ title: string; candidateCount: number; voterCount: number } | null>(
     null
@@ -80,6 +89,7 @@ export default function AdminElectionPage() {
 
     if (allow) {
       void loadOrganizations(accessToken);
+      void loadElections(accessToken);
     }
   }, [router]);
 
@@ -95,6 +105,18 @@ export default function AdminElectionPage() {
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "failed to load organizations");
+    }
+  }
+
+  async function loadElections(accessTokenOverride?: string) {
+    const accessToken = accessTokenOverride ?? token;
+    if (!accessToken) return;
+
+    try {
+      const res = await listElections(accessToken);
+      setElections(res.data.elections);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "failed to load elections");
     }
   }
 
@@ -140,6 +162,7 @@ export default function AdminElectionPage() {
       const createdId = res.data.election_id;
       setElectionId(createdId);
       setCreateResult(`Created election: ${createdId}`);
+      await loadElections();
     } catch (err) {
       setCreateResult(err instanceof Error ? err.message : "failed to create election");
     }
@@ -179,6 +202,7 @@ export default function AdminElectionPage() {
     try {
       await publishElection(token, electionId);
       await loadElectionData();
+      await loadElections();
       setMessage("Election published");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "publish failed");
@@ -191,6 +215,7 @@ export default function AdminElectionPage() {
     try {
       await closeElection(token, electionId);
       await loadElectionData();
+      await loadElections();
       setMessage("Election closed");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "close failed");
@@ -281,6 +306,15 @@ export default function AdminElectionPage() {
       </main>
     );
   }
+
+  const filteredElections = elections.filter((item) => {
+    const byStatus = electionStatusFilter === "all" || item.status === electionStatusFilter;
+    const bySearch =
+      electionSearch.trim().length === 0 ||
+      item.title.toLowerCase().includes(electionSearch.toLowerCase()) ||
+      item.id.toLowerCase().includes(electionSearch.toLowerCase());
+    return byStatus && bySearch;
+  });
 
   return (
     <main className="mx-auto max-w-5xl space-y-4">
@@ -384,7 +418,55 @@ export default function AdminElectionPage() {
       </Card>
 
       <Card className="space-y-4">
-        <h2 className="text-xl font-semibold">3) Manage Election</h2>
+        <h2 className="text-xl font-semibold">3) Elections List</h2>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <Input
+              placeholder="Search by title or election ID"
+              value={electionSearch}
+              onChange={(e) => setElectionSearch(e.target.value)}
+            />
+          </div>
+          <select
+            className="flex h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={electionStatusFilter}
+            onChange={(e) =>
+              setElectionStatusFilter(e.target.value as "all" | ElectionStatus)
+            }
+          >
+            <option value="all">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+        <Button variant="outline" onClick={() => void loadElections()} disabled={!token || !authorized}>
+          Refresh Elections
+        </Button>
+        <div className="space-y-2">
+          {filteredElections.length === 0 ? (
+            <p className="text-sm text-slate-600">No elections found.</p>
+          ) : (
+            filteredElections.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="w-full rounded border border-border p-3 text-left text-sm hover:bg-muted"
+                onClick={() => setElectionId(item.id)}
+              >
+                <p className="font-medium">{item.title}</p>
+                <p className="text-xs text-slate-600">
+                  {item.id} | {item.status} | candidates: {item.candidate_count} | voters:{" "}
+                  {item.voter_count}
+                </p>
+              </button>
+            ))
+          )}
+        </div>
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="text-xl font-semibold">4) Manage Election</h2>
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
           <div className="w-full space-y-2">
             <Label htmlFor="election_id">Election ID</Label>
