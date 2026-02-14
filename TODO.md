@@ -93,7 +93,7 @@
 - [ ] Add dedicated admin elections index page (not only in create/manage screen)
 - [x] Add global auth guard middleware/layout handling
 - [x] Add standardized API error UI and toast system
-- [ ] Add loading/skeleton states for all admin async sections
+- [x] Add loading/skeleton states for all admin async sections
 - [ ] Add i18n/localization support (TH/EN)
 
 ### E. Reliability / observability

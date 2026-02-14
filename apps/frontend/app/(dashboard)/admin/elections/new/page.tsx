@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import {
   addVoterRoll,
@@ -94,6 +95,21 @@ export default function AdminElectionPage() {
 
   const [results, setResults] = useState<{ name: string; total: number }[]>([]);
   const [message, setMessage] = useState<Feedback | null>(null);
+  const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
+  const [isOrganizationSubmitting, setIsOrganizationSubmitting] = useState(false);
+  const [isElectionCreating, setIsElectionCreating] = useState(false);
+  const [isElectionsLoading, setIsElectionsLoading] = useState(false);
+  const [isElectionDataLoading, setIsElectionDataLoading] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [isCandidateSubmitting, setIsCandidateSubmitting] = useState(false);
+  const [isCandidateMutatingId, setIsCandidateMutatingId] = useState<string | null>(null);
+  const [isVoterSubmitting, setIsVoterSubmitting] = useState(false);
+  const [isVoterMutatingId, setIsVoterMutatingId] = useState<string | null>(null);
+  const [isImportValidating, setIsImportValidating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isResultsLoading, setIsResultsLoading] = useState(false);
+  const [isElectionUpdating, setIsElectionUpdating] = useState(false);
 
   const canManage = useMemo(
     () => Boolean(token && electionId && authorized),
@@ -154,6 +170,7 @@ export default function AdminElectionPage() {
     const accessToken = accessTokenOverride ?? token;
     if (!accessToken) return;
 
+    setIsOrganizationsLoading(true);
     try {
       const res = await listOrganizations(accessToken);
       setOrganizations(res.data.organizations);
@@ -162,6 +179,8 @@ export default function AdminElectionPage() {
       }
     } catch (error) {
       pushGlobalError(error, "failed to load organizations");
+    } finally {
+      setIsOrganizationsLoading(false);
     }
   }
 
@@ -169,6 +188,7 @@ export default function AdminElectionPage() {
     const accessToken = accessTokenOverride ?? token;
     if (!accessToken) return;
 
+    setIsElectionsLoading(true);
     try {
       const page = pageOverride ?? electionsPage;
       const res = await listElections(accessToken, { page, per_page: 10 });
@@ -177,6 +197,8 @@ export default function AdminElectionPage() {
       setElectionsPage(res.data.pagination.page);
     } catch (error) {
       pushGlobalError(error, "failed to load elections");
+    } finally {
+      setIsElectionsLoading(false);
     }
   }
 
@@ -189,6 +211,7 @@ export default function AdminElectionPage() {
       return;
     }
 
+    setIsOrganizationSubmitting(true);
     try {
       const res = await createOrganization(token, organizationName);
       setOrganizationName("");
@@ -197,6 +220,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess(`Organization created: ${res.data.name}`);
     } catch (error) {
       pushGlobalError(error, "failed to create organization");
+    } finally {
+      setIsOrganizationSubmitting(false);
     }
   }
 
@@ -210,6 +235,7 @@ export default function AdminElectionPage() {
       return;
     }
 
+    setIsElectionCreating(true);
     try {
       const res = await createElection(token, {
         organization_id: organizationId,
@@ -227,6 +253,8 @@ export default function AdminElectionPage() {
       await loadElections(undefined, 1);
     } catch (error) {
       pushCreateError(error, "failed to create election");
+    } finally {
+      setIsElectionCreating(false);
     }
   }
 
@@ -238,6 +266,7 @@ export default function AdminElectionPage() {
 
     clearGlobalMessage();
 
+    setIsElectionDataLoading(true);
     try {
       const targetCandidatePage = candidatePageOverride ?? candidatesPage;
       const targetVoterPage = voterPageOverride ?? votersPage;
@@ -265,6 +294,8 @@ export default function AdminElectionPage() {
       setVotersPage(voterList.data.pagination.page);
     } catch (error) {
       pushGlobalError(error, "failed to load election data");
+    } finally {
+      setIsElectionDataLoading(false);
     }
   }
 
@@ -274,6 +305,7 @@ export default function AdminElectionPage() {
       return;
     }
     clearGlobalMessage();
+    setIsPublishing(true);
     try {
       await publishElection(token, electionId);
       await loadElectionData();
@@ -281,6 +313,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess("Election published");
     } catch (error) {
       pushGlobalError(error, "publish failed");
+    } finally {
+      setIsPublishing(false);
     }
   }
 
@@ -290,6 +324,7 @@ export default function AdminElectionPage() {
       return;
     }
     clearGlobalMessage();
+    setIsClosing(true);
     try {
       await closeElection(token, electionId);
       await loadElectionData();
@@ -297,6 +332,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess("Election closed");
     } catch (error) {
       pushGlobalError(error, "close failed");
+    } finally {
+      setIsClosing(false);
     }
   }
 
@@ -304,6 +341,7 @@ export default function AdminElectionPage() {
     event.preventDefault();
     if (!token || !electionId || !authorized) return;
 
+    setIsCandidateSubmitting(true);
     try {
       await createCandidate(token, electionId, {
         name: candidateName,
@@ -315,6 +353,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess("Candidate added");
     } catch (error) {
       pushGlobalError(error, "add candidate failed");
+    } finally {
+      setIsCandidateSubmitting(false);
     }
   }
 
@@ -333,6 +373,7 @@ export default function AdminElectionPage() {
   async function onUpdateCandidate(candidateId: string) {
     if (!token || !electionId || !authorized) return;
 
+    setIsCandidateMutatingId(candidateId);
     try {
       await updateCandidate(token, electionId, candidateId, {
         name: editCandidateName,
@@ -343,6 +384,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess("Candidate updated");
     } catch (error) {
       pushGlobalError(error, "update candidate failed");
+    } finally {
+      setIsCandidateMutatingId(null);
     }
   }
 
@@ -352,12 +395,15 @@ export default function AdminElectionPage() {
       return;
     }
 
+    setIsCandidateMutatingId(candidateId);
     try {
       await deleteCandidate(token, electionId, candidateId);
       await loadElectionData(candidatesPage, votersPage);
       pushGlobalSuccess("Candidate removed");
     } catch (error) {
       pushGlobalError(error, "delete candidate failed");
+    } finally {
+      setIsCandidateMutatingId(null);
     }
   }
 
@@ -365,6 +411,7 @@ export default function AdminElectionPage() {
     event.preventDefault();
     if (!token || !electionId || !authorized) return;
 
+    setIsVoterSubmitting(true);
     try {
       await addVoterRoll(token, electionId, voterIdInput);
       setVoterIdInput("");
@@ -372,6 +419,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess("Voter added to roll");
     } catch (error) {
       pushGlobalError(error, "add voter failed");
+    } finally {
+      setIsVoterSubmitting(false);
     }
   }
 
@@ -381,12 +430,15 @@ export default function AdminElectionPage() {
       return;
     }
 
+    setIsVoterMutatingId(userId);
     try {
       await removeVoterRoll(token, electionId, userId);
       await loadElectionData(candidatesPage, votersPage);
       pushGlobalSuccess("Voter removed from roll");
     } catch (error) {
       pushGlobalError(error, "remove voter failed");
+    } finally {
+      setIsVoterMutatingId(null);
     }
   }
 
@@ -401,6 +453,11 @@ export default function AdminElectionPage() {
       return;
     }
 
+    if (dryRun) {
+      setIsImportValidating(true);
+    } else {
+      setIsImporting(true);
+    }
     try {
       const report = await importVoterRolls(token, electionId, {
         format: importFormat,
@@ -414,18 +471,27 @@ export default function AdminElectionPage() {
       pushGlobalSuccess(dryRun ? "Validation completed" : "Import completed");
     } catch (error) {
       pushGlobalError(error, "import failed");
+    } finally {
+      if (dryRun) {
+        setIsImportValidating(false);
+      } else {
+        setIsImporting(false);
+      }
     }
   }
 
   async function onLoadResults() {
     if (!token || !electionId || !authorized) return;
 
+    setIsResultsLoading(true);
     try {
       const res = await getElectionResults(token, electionId);
       setResults(res.data.results.map((item) => ({ name: item.name, total: item.total })));
       pushGlobalSuccess("Results loaded");
     } catch (error) {
       pushGlobalError(error, "failed to load results");
+    } finally {
+      setIsResultsLoading(false);
     }
   }
 
@@ -433,6 +499,7 @@ export default function AdminElectionPage() {
     event.preventDefault();
     if (!token || !electionId || !authorized) return;
 
+    setIsElectionUpdating(true);
     try {
       await updateElection(token, electionId, {
         title: editTitle,
@@ -445,6 +512,8 @@ export default function AdminElectionPage() {
       pushGlobalSuccess("Election updated");
     } catch (error) {
       pushGlobalError(error, "failed to update election");
+    } finally {
+      setIsElectionUpdating(false);
     }
   }
 
@@ -487,6 +556,10 @@ export default function AdminElectionPage() {
   const hasNextCandidates = candidatesPagination.page < candidatesPagination.total_pages;
   const hasPrevVoters = votersPagination.page > 1;
   const hasNextVoters = votersPagination.page < votersPagination.total_pages;
+  const isImportBusy = isImportValidating || isImporting;
+  const isManageBusy = isElectionDataLoading || isPublishing || isClosing || isElectionUpdating;
+  const isCandidateBusy = isElectionDataLoading || isCandidateSubmitting || isCandidateMutatingId !== null;
+  const isVoterBusy = isElectionDataLoading || isVoterSubmitting || isVoterMutatingId !== null;
   const selectClassName =
     "flex h-10 w-full rounded-xl border border-border/85 bg-card/85 px-3 py-2 text-sm text-foreground shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
   const compactSelectClassName =
@@ -510,23 +583,30 @@ export default function AdminElectionPage() {
             placeholder="Organization name"
             value={organizationName}
             onChange={(e) => setOrganizationName(e.target.value)}
+            disabled={!token || !authorized || isOrganizationSubmitting}
             required
           />
-          <Button type="submit" disabled={!token || !authorized}>
-            Create Organization
+          <Button type="submit" disabled={!token || !authorized || isOrganizationSubmitting}>
+            {isOrganizationSubmitting ? "Creating..." : "Create Organization"}
           </Button>
           <Button
             type="button"
             variant="outline"
             onClick={() => void loadOrganizations()}
-            disabled={!token || !authorized}
+            disabled={!token || !authorized || isOrganizationsLoading}
           >
-            Refresh List
+            {isOrganizationsLoading ? "Refreshing..." : "Refresh List"}
           </Button>
         </form>
         <div className="rounded border border-border p-3 text-sm">
           <p className="mb-2 font-medium">Available Organizations</p>
-          {organizations.length === 0 ? (
+          {isOrganizationsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-4 w-3/5" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ) : organizations.length === 0 ? (
             <p className="text-foreground/60">No organizations found.</p>
           ) : (
             <ul className="space-y-1">
@@ -550,6 +630,7 @@ export default function AdminElectionPage() {
               className={selectClassName}
               value={organizationId}
               onChange={(e) => setOrganizationId(e.target.value)}
+              disabled={isElectionCreating}
               required
             >
               <option value="">Select organization</option>
@@ -562,11 +643,22 @@ export default function AdminElectionPage() {
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="title">Title</Label>
-            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Input
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              disabled={isElectionCreating}
+              required
+            />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="description">Description</Label>
-            <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={isElectionCreating}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="opens">Opens At</Label>
@@ -575,6 +667,7 @@ export default function AdminElectionPage() {
               type="datetime-local"
               value={opensAt}
               onChange={(e) => setOpensAt(e.target.value)}
+              disabled={isElectionCreating}
               required
             />
           </div>
@@ -585,11 +678,14 @@ export default function AdminElectionPage() {
               type="datetime-local"
               value={closesAt}
               onChange={(e) => setClosesAt(e.target.value)}
+              disabled={isElectionCreating}
               required
             />
           </div>
           <div className="md:col-span-2">
-            <Button type="submit">Create Election</Button>
+            <Button type="submit" disabled={isElectionCreating}>
+              {isElectionCreating ? "Creating..." : "Create Election"}
+            </Button>
           </div>
         </form>
         {createResult ? (
@@ -611,6 +707,7 @@ export default function AdminElectionPage() {
               placeholder="Search by title or election ID"
               value={electionSearch}
               onChange={(e) => setElectionSearch(e.target.value)}
+              disabled={isElectionsLoading}
             />
           </div>
           <select
@@ -619,6 +716,7 @@ export default function AdminElectionPage() {
             onChange={(e) =>
               setElectionStatusFilter(e.target.value as "all" | ElectionStatus)
             }
+            disabled={isElectionsLoading}
           >
             <option value="all">All statuses</option>
             <option value="draft">Draft</option>
@@ -626,8 +724,12 @@ export default function AdminElectionPage() {
             <option value="closed">Closed</option>
           </select>
         </div>
-        <Button variant="outline" onClick={() => void loadElections()} disabled={!token || !authorized}>
-          Refresh Elections
+        <Button
+          variant="outline"
+          onClick={() => void loadElections()}
+          disabled={!token || !authorized || isElectionsLoading}
+        >
+          {isElectionsLoading ? "Refreshing..." : "Refresh Elections"}
         </Button>
         <div className="flex items-center gap-2 text-xs">
           <Button
@@ -635,7 +737,7 @@ export default function AdminElectionPage() {
             variant="outline"
             size="sm"
             onClick={() => void loadElections(undefined, electionsPage - 1)}
-            disabled={!hasPrevElections}
+            disabled={!hasPrevElections || isElectionsLoading}
           >
             Prev
           </Button>
@@ -647,13 +749,19 @@ export default function AdminElectionPage() {
             variant="outline"
             size="sm"
             onClick={() => void loadElections(undefined, electionsPage + 1)}
-            disabled={!hasNextElections}
+            disabled={!hasNextElections || isElectionsLoading}
           >
             Next
           </Button>
         </div>
         <div className="space-y-2">
-          {filteredElections.length === 0 ? (
+          {isElectionsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full rounded-xl" />
+              <Skeleton className="h-16 w-full rounded-xl" />
+              <Skeleton className="h-16 w-full rounded-xl" />
+            </div>
+          ) : filteredElections.length === 0 ? (
             <p className="text-sm text-foreground/60">No elections found.</p>
           ) : (
             filteredElections.map((item) => (
@@ -690,21 +798,40 @@ export default function AdminElectionPage() {
               placeholder="Paste election UUID"
             />
           </div>
-          <Button onClick={() => void loadElectionData()} disabled={!canManage}>
-            Load
+          <Button onClick={() => void loadElectionData()} disabled={!canManage || isElectionDataLoading}>
+            {isElectionDataLoading ? "Loading..." : "Load"}
           </Button>
-          <Button variant="outline" onClick={onPublish} disabled={!canManage || status !== "draft"}>
-            Publish
+          <Button
+            variant="outline"
+            onClick={onPublish}
+            disabled={!canManage || status !== "draft" || isElectionDataLoading || isPublishing}
+          >
+            {isPublishing ? "Publishing..." : "Publish"}
           </Button>
-          <Button variant="outline" onClick={onClose} disabled={!canManage || status !== "published"}>
-            Close
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={!canManage || status !== "published" || isElectionDataLoading || isClosing}
+          >
+            {isClosing ? "Closing..." : "Close"}
           </Button>
-          <Button variant="outline" onClick={onLoadResults} disabled={!canManage || status !== "closed"}>
-            Load Results
+          <Button
+            variant="outline"
+            onClick={onLoadResults}
+            disabled={!canManage || status !== "closed" || isResultsLoading || isElectionDataLoading}
+          >
+            {isResultsLoading ? "Loading..." : "Load Results"}
           </Button>
         </div>
 
-        {meta ? (
+        {isElectionDataLoading ? (
+          <div className="space-y-2 rounded border border-border p-3 text-sm">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-3/5" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+        ) : meta ? (
           <div className="rounded border border-border p-3 text-sm">
             <p>
               <strong>Title:</strong> {meta.title}
@@ -733,7 +860,7 @@ export default function AdminElectionPage() {
                 id="edit_title"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                disabled={!canManage || status !== "draft"}
+                disabled={!canManage || status !== "draft" || isManageBusy}
                 required
               />
             </div>
@@ -743,7 +870,7 @@ export default function AdminElectionPage() {
                 id="edit_description"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
-                disabled={!canManage || status !== "draft"}
+                disabled={!canManage || status !== "draft" || isManageBusy}
               />
             </div>
             <div className="space-y-1">
@@ -753,7 +880,7 @@ export default function AdminElectionPage() {
                 type="datetime-local"
                 value={editOpensAt}
                 onChange={(e) => setEditOpensAt(e.target.value)}
-                disabled={!canManage || status !== "draft"}
+                disabled={!canManage || status !== "draft" || isManageBusy}
                 required
               />
             </div>
@@ -764,13 +891,13 @@ export default function AdminElectionPage() {
                 type="datetime-local"
                 value={editClosesAt}
                 onChange={(e) => setEditClosesAt(e.target.value)}
-                disabled={!canManage || status !== "draft"}
+                disabled={!canManage || status !== "draft" || isManageBusy}
                 required
               />
             </div>
             <div className="md:col-span-2">
-              <Button type="submit" disabled={!canManage || status !== "draft"}>
-                Save Election Changes
+              <Button type="submit" disabled={!canManage || status !== "draft" || isManageBusy}>
+                {isElectionUpdating ? "Saving..." : "Save Election Changes"}
               </Button>
             </div>
           </form>
@@ -784,75 +911,99 @@ export default function AdminElectionPage() {
                 placeholder="Candidate name"
                 value={candidateName}
                 onChange={(e) => setCandidateName(e.target.value)}
+                disabled={!canManage || isCandidateBusy}
                 required
               />
               <Input
                 placeholder="Manifesto (optional)"
                 value={candidateManifesto}
                 onChange={(e) => setCandidateManifesto(e.target.value)}
+                disabled={!canManage || isCandidateBusy}
               />
-              <Button type="submit" disabled={!canManage}>
-                Add Candidate
+              <Button type="submit" disabled={!canManage || isCandidateBusy}>
+                {isCandidateSubmitting ? "Adding..." : "Add Candidate"}
               </Button>
             </form>
             <div className="space-y-2">
-              {candidates.map((candidate) => (
-                <div
-                  key={candidate.id}
-                  className="flex items-center justify-between rounded border border-border p-2 text-sm"
-                >
-                  {editingCandidateId === candidate.id ? (
-                    <div className="w-full space-y-2">
-                      <Input
-                        value={editCandidateName}
-                        onChange={(e) => setEditCandidateName(e.target.value)}
-                      />
-                      <Input
-                        value={editCandidateManifesto}
-                        onChange={(e) => setEditCandidateManifesto(e.target.value)}
-                        placeholder="Manifesto (optional)"
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => void onUpdateCandidate(candidate.id)}
-                          disabled={!editCandidateName.trim()}
-                        >
-                          Save
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={cancelEditCandidate}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <p>{candidate.name}</p>
-                        {candidate.manifesto ? (
-                          <p className="text-xs text-foreground/65">{candidate.manifesto}</p>
-                        ) : null}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => startEditCandidate(candidate)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onDeleteCandidate(candidate.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </>
-                  )}
+              {isElectionDataLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
                 </div>
-              ))}
+              ) : candidates.length === 0 ? (
+                <p className="text-sm text-foreground/60">No candidates loaded.</p>
+              ) : (
+                candidates.map((candidate) => {
+                  const isCandidateMutating = isCandidateMutatingId === candidate.id;
+                  return (
+                    <div
+                      key={candidate.id}
+                      className="flex items-center justify-between rounded border border-border p-2 text-sm"
+                    >
+                      {editingCandidateId === candidate.id ? (
+                        <div className="w-full space-y-2">
+                          <Input
+                            value={editCandidateName}
+                            onChange={(e) => setEditCandidateName(e.target.value)}
+                            disabled={isCandidateMutating}
+                          />
+                          <Input
+                            value={editCandidateManifesto}
+                            onChange={(e) => setEditCandidateManifesto(e.target.value)}
+                            placeholder="Manifesto (optional)"
+                            disabled={isCandidateMutating}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => void onUpdateCandidate(candidate.id)}
+                              disabled={!editCandidateName.trim() || isCandidateMutating}
+                            >
+                              {isCandidateMutating ? "Saving..." : "Save"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={cancelEditCandidate}
+                              disabled={isCandidateMutating}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <p>{candidate.name}</p>
+                            {candidate.manifesto ? (
+                              <p className="text-xs text-foreground/65">{candidate.manifesto}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startEditCandidate(candidate)}
+                              disabled={isElectionDataLoading || isCandidateMutatingId !== null}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onDeleteCandidate(candidate.id)}
+                              disabled={isElectionDataLoading || isCandidateMutatingId !== null}
+                            >
+                              {isCandidateMutating ? "Deleting..." : "Delete"}
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Button
@@ -860,7 +1011,7 @@ export default function AdminElectionPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => void loadElectionData(candidatesPage - 1, votersPage)}
-                disabled={!hasPrevCandidates || !canManage}
+                disabled={!hasPrevCandidates || !canManage || isCandidateBusy}
               >
                 Prev
               </Button>
@@ -872,7 +1023,7 @@ export default function AdminElectionPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => void loadElectionData(candidatesPage + 1, votersPage)}
-                disabled={!hasNextCandidates || !canManage}
+                disabled={!hasNextCandidates || !canManage || isCandidateBusy}
               >
                 Next
               </Button>
@@ -886,27 +1037,46 @@ export default function AdminElectionPage() {
                 placeholder="User UUID"
                 value={voterIdInput}
                 onChange={(e) => setVoterIdInput(e.target.value)}
+                disabled={!canManage || isVoterBusy}
                 required
               />
-              <Button type="submit" disabled={!canManage}>
-                Add Voter
+              <Button type="submit" disabled={!canManage || isVoterBusy}>
+                {isVoterSubmitting ? "Adding..." : "Add Voter"}
               </Button>
             </form>
             <div className="space-y-2">
-              {voters.map((voter) => (
-                <div
-                  key={voter.user_id}
-                  className="flex items-center justify-between rounded border border-border p-2 text-sm"
-                >
-                  <div>
-                    <p>{voter.full_name}</p>
-                    <p className="text-xs text-foreground/65">{voter.email}</p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => onRemoveVoter(voter.user_id)}>
-                    Remove
-                  </Button>
+              {isElectionDataLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
                 </div>
-              ))}
+              ) : voters.length === 0 ? (
+                <p className="text-sm text-foreground/60">No voters loaded.</p>
+              ) : (
+                voters.map((voter) => {
+                  const isVoterMutating = isVoterMutatingId === voter.user_id;
+                  return (
+                    <div
+                      key={voter.user_id}
+                      className="flex items-center justify-between rounded border border-border p-2 text-sm"
+                    >
+                      <div>
+                        <p>{voter.full_name}</p>
+                        <p className="text-xs text-foreground/65">{voter.email}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRemoveVoter(voter.user_id)}
+                        disabled={isElectionDataLoading || isVoterMutatingId !== null}
+                      >
+                        {isVoterMutating ? "Removing..." : "Remove"}
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Button
@@ -914,7 +1084,7 @@ export default function AdminElectionPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => void loadElectionData(candidatesPage, votersPage - 1)}
-                disabled={!hasPrevVoters || !canManage}
+                disabled={!hasPrevVoters || !canManage || isVoterBusy}
               >
                 Prev
               </Button>
@@ -926,7 +1096,7 @@ export default function AdminElectionPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => void loadElectionData(candidatesPage, votersPage + 1)}
-                disabled={!hasNextVoters || !canManage}
+                disabled={!hasNextVoters || !canManage || isVoterBusy}
               >
                 Next
               </Button>
@@ -939,6 +1109,7 @@ export default function AdminElectionPage() {
                   className={compactSelectClassName}
                   value={importFormat}
                   onChange={(e) => setImportFormat(e.target.value as "csv" | "json")}
+                  disabled={isImportBusy || isElectionDataLoading}
                 >
                   <option value="csv">CSV</option>
                   <option value="json">JSON</option>
@@ -947,22 +1118,23 @@ export default function AdminElectionPage() {
                   type="button"
                   variant="outline"
                   onClick={() => void onImportVoterRolls(true)}
-                  disabled={!canManage || !importPayload.trim()}
+                  disabled={!canManage || !importPayload.trim() || isImportBusy || isElectionDataLoading}
                 >
-                  Validate (Dry Run)
+                  {isImportValidating ? "Validating..." : "Validate (Dry Run)"}
                 </Button>
                 <Button
                   type="button"
                   onClick={() => void onImportVoterRolls(false)}
-                  disabled={!canManage || !importPayload.trim()}
+                  disabled={!canManage || !importPayload.trim() || isImportBusy || isElectionDataLoading}
                 >
-                  Import
+                  {isImporting ? "Importing..." : "Import"}
                 </Button>
               </div>
               <textarea
                 className={textareaClassName}
                 value={importPayload}
                 onChange={(e) => setImportPayload(e.target.value)}
+                disabled={isImportBusy || isElectionDataLoading}
                 placeholder={
                   importFormat === "csv"
                     ? "user_id\\n550e8400-e29b-41d4-a716-446655440000\\nuser@example.com"
@@ -993,7 +1165,14 @@ export default function AdminElectionPage() {
           </Card>
         </div>
 
-        {results.length > 0 ? (
+        {isResultsLoading ? (
+          <Card className="space-y-2">
+            <h3 className="font-semibold">Results</h3>
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-4 w-1/4" />
+          </Card>
+        ) : results.length > 0 ? (
           <Card className="space-y-2">
             <h3 className="font-semibold">Results</h3>
             {results.map((r) => (
