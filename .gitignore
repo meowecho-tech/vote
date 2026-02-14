@@ -16,6 +16,7 @@
 **/out/
 **/coverage/
 .turbo/
+**/*.tsbuildinfo
 
 # Rust
 **/target/

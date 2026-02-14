@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -22,12 +23,16 @@ import {
   publishElection,
   removeVoterRoll,
 } from "@/lib/api";
+import { getRoleFromAccessToken } from "@/lib/auth";
 import type { Candidate, Organization, VoterRollEntry } from "@/lib/types";
 
 type ElectionStatus = "draft" | "published" | "closed";
 
 export default function AdminElectionPage() {
+  const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
 
   const [organizationId, setOrganizationId] = useState("");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -40,7 +45,9 @@ export default function AdminElectionPage() {
 
   const [electionId, setElectionId] = useState("");
   const [status, setStatus] = useState<ElectionStatus | null>(null);
-  const [meta, setMeta] = useState<{ title: string; candidateCount: number; voterCount: number } | null>(null);
+  const [meta, setMeta] = useState<{ title: string; candidateCount: number; voterCount: number } | null>(
+    null
+  );
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateName, setCandidateName] = useState("");
@@ -52,16 +59,29 @@ export default function AdminElectionPage() {
   const [results, setResults] = useState<{ name: string; total: number }[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
-  const canManage = useMemo(() => Boolean(token && electionId), [token, electionId]);
+  const canManage = useMemo(
+    () => Boolean(token && electionId && authorized),
+    [token, electionId, authorized]
+  );
 
   useEffect(() => {
     const accessToken = localStorage.getItem("vote_access_token");
-    setToken(accessToken);
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
 
-    if (accessToken) {
+    const role = getRoleFromAccessToken(accessToken);
+    const allow = role === "admin" || role === "election_officer";
+
+    setToken(accessToken);
+    setAuthorized(allow);
+    setAuthChecked(true);
+
+    if (allow) {
       void loadOrganizations(accessToken);
     }
-  }, []);
+  }, [router]);
 
   async function loadOrganizations(accessTokenOverride?: string) {
     const accessToken = accessTokenOverride ?? token;
@@ -82,7 +102,7 @@ export default function AdminElectionPage() {
     event.preventDefault();
     setMessage(null);
 
-    if (!token) {
+    if (!token || !authorized) {
       setMessage("Please login as admin first");
       return;
     }
@@ -103,7 +123,7 @@ export default function AdminElectionPage() {
     setCreateResult(null);
     setMessage(null);
 
-    if (!token) {
+    if (!token || !authorized) {
       setCreateResult("Please login as admin first");
       return;
     }
@@ -126,7 +146,7 @@ export default function AdminElectionPage() {
   }
 
   async function loadElectionData() {
-    if (!token || !electionId) {
+    if (!token || !electionId || !authorized) {
       setMessage("Missing token or election id");
       return;
     }
@@ -154,7 +174,7 @@ export default function AdminElectionPage() {
   }
 
   async function onPublish() {
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
     setMessage(null);
     try {
       await publishElection(token, electionId);
@@ -166,7 +186,7 @@ export default function AdminElectionPage() {
   }
 
   async function onClose() {
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
     setMessage(null);
     try {
       await closeElection(token, electionId);
@@ -179,7 +199,7 @@ export default function AdminElectionPage() {
 
   async function onAddCandidate(event: FormEvent) {
     event.preventDefault();
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
 
     try {
       await createCandidate(token, electionId, {
@@ -196,7 +216,7 @@ export default function AdminElectionPage() {
   }
 
   async function onDeleteCandidate(candidateId: string) {
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
 
     try {
       await deleteCandidate(token, electionId, candidateId);
@@ -209,7 +229,7 @@ export default function AdminElectionPage() {
 
   async function onAddVoter(event: FormEvent) {
     event.preventDefault();
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
 
     try {
       await addVoterRoll(token, electionId, voterIdInput);
@@ -222,7 +242,7 @@ export default function AdminElectionPage() {
   }
 
   async function onRemoveVoter(userId: string) {
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
 
     try {
       await removeVoterRoll(token, electionId, userId);
@@ -234,7 +254,7 @@ export default function AdminElectionPage() {
   }
 
   async function onLoadResults() {
-    if (!token || !electionId) return;
+    if (!token || !electionId || !authorized) return;
 
     try {
       const res = await getElectionResults(token, electionId);
@@ -244,12 +264,31 @@ export default function AdminElectionPage() {
     }
   }
 
+  if (!authChecked) {
+    return <main className="mx-auto max-w-5xl">Checking authorization...</main>;
+  }
+
+  if (!authorized) {
+    return (
+      <main className="mx-auto max-w-3xl">
+        <Card className="space-y-3">
+          <h1 className="text-2xl font-semibold">Unauthorized</h1>
+          <p className="text-sm text-slate-600">Only admin or election officer can access this page.</p>
+          <Link className="text-primary underline" href="/">
+            Back to home
+          </Link>
+        </Card>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-5xl space-y-4">
       <Card className="space-y-4">
         <h1 className="text-2xl font-semibold">Admin Election Console</h1>
-        <p className="text-sm text-slate-600">Create election, manage candidates/voters, publish, close, and fetch results.</p>
-        {!token ? <p className="text-sm text-red-600">Please login as admin first.</p> : null}
+        <p className="text-sm text-slate-600">
+          Create election, manage candidates/voters, publish, close, and fetch results.
+        </p>
       </Card>
 
       <Card className="space-y-4">
@@ -261,10 +300,15 @@ export default function AdminElectionPage() {
             onChange={(e) => setOrganizationName(e.target.value)}
             required
           />
-          <Button type="submit" disabled={!token}>
+          <Button type="submit" disabled={!token || !authorized}>
             Create Organization
           </Button>
-          <Button type="button" variant="outline" onClick={() => void loadOrganizations()} disabled={!token}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void loadOrganizations()}
+            disabled={!token || !authorized}
+          >
             Refresh List
           </Button>
         </form>
@@ -314,11 +358,23 @@ export default function AdminElectionPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="opens">Opens At</Label>
-            <Input id="opens" type="datetime-local" value={opensAt} onChange={(e) => setOpensAt(e.target.value)} required />
+            <Input
+              id="opens"
+              type="datetime-local"
+              value={opensAt}
+              onChange={(e) => setOpensAt(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="closes">Closes At</Label>
-            <Input id="closes" type="datetime-local" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} required />
+            <Input
+              id="closes"
+              type="datetime-local"
+              value={closesAt}
+              onChange={(e) => setClosesAt(e.target.value)}
+              required
+            />
           </div>
           <div className="md:col-span-2">
             <Button type="submit">Create Election</Button>
@@ -332,19 +388,38 @@ export default function AdminElectionPage() {
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
           <div className="w-full space-y-2">
             <Label htmlFor="election_id">Election ID</Label>
-            <Input id="election_id" value={electionId} onChange={(e) => setElectionId(e.target.value)} placeholder="Paste election UUID" />
+            <Input
+              id="election_id"
+              value={electionId}
+              onChange={(e) => setElectionId(e.target.value)}
+              placeholder="Paste election UUID"
+            />
           </div>
-          <Button onClick={loadElectionData} disabled={!canManage}>Load</Button>
-          <Button variant="outline" onClick={onPublish} disabled={!canManage || status !== "draft"}>Publish</Button>
-          <Button variant="outline" onClick={onClose} disabled={!canManage || status !== "published"}>Close</Button>
-          <Button variant="outline" onClick={onLoadResults} disabled={!canManage || status !== "closed"}>Load Results</Button>
+          <Button onClick={loadElectionData} disabled={!canManage}>
+            Load
+          </Button>
+          <Button variant="outline" onClick={onPublish} disabled={!canManage || status !== "draft"}>
+            Publish
+          </Button>
+          <Button variant="outline" onClick={onClose} disabled={!canManage || status !== "published"}>
+            Close
+          </Button>
+          <Button variant="outline" onClick={onLoadResults} disabled={!canManage || status !== "closed"}>
+            Load Results
+          </Button>
         </div>
 
         {meta ? (
           <div className="rounded border border-border p-3 text-sm">
-            <p><strong>Title:</strong> {meta.title}</p>
-            <p><strong>Status:</strong> {status}</p>
-            <p><strong>Candidates:</strong> {meta.candidateCount} | <strong>Voters:</strong> {meta.voterCount}</p>
+            <p>
+              <strong>Title:</strong> {meta.title}
+            </p>
+            <p>
+              <strong>Status:</strong> {status}
+            </p>
+            <p>
+              <strong>Candidates:</strong> {meta.candidateCount} | <strong>Voters:</strong> {meta.voterCount}
+            </p>
             <p>
               <strong>Voter URL:</strong>{" "}
               <Link className="text-primary underline" href={`/voter/elections/${electionId}`}>
@@ -358,16 +433,32 @@ export default function AdminElectionPage() {
           <Card className="space-y-3">
             <h3 className="font-semibold">Candidates</h3>
             <form onSubmit={onAddCandidate} className="space-y-2">
-              <Input placeholder="Candidate name" value={candidateName} onChange={(e) => setCandidateName(e.target.value)} required />
-              <Input placeholder="Manifesto (optional)" value={candidateManifesto} onChange={(e) => setCandidateManifesto(e.target.value)} />
-              <Button type="submit" disabled={!canManage}>Add Candidate</Button>
+              <Input
+                placeholder="Candidate name"
+                value={candidateName}
+                onChange={(e) => setCandidateName(e.target.value)}
+                required
+              />
+              <Input
+                placeholder="Manifesto (optional)"
+                value={candidateManifesto}
+                onChange={(e) => setCandidateManifesto(e.target.value)}
+              />
+              <Button type="submit" disabled={!canManage}>
+                Add Candidate
+              </Button>
             </form>
             <div className="space-y-2">
               {candidates.map((candidate) => (
-                <div key={candidate.id} className="flex items-center justify-between rounded border border-border p-2 text-sm">
+                <div
+                  key={candidate.id}
+                  className="flex items-center justify-between rounded border border-border p-2 text-sm"
+                >
                   <div>
                     <p>{candidate.name}</p>
-                    {candidate.manifesto ? <p className="text-xs text-slate-600">{candidate.manifesto}</p> : null}
+                    {candidate.manifesto ? (
+                      <p className="text-xs text-slate-600">{candidate.manifesto}</p>
+                    ) : null}
                   </div>
                   <Button variant="outline" size="sm" onClick={() => onDeleteCandidate(candidate.id)}>
                     Delete
@@ -380,12 +471,22 @@ export default function AdminElectionPage() {
           <Card className="space-y-3">
             <h3 className="font-semibold">Voter Roll</h3>
             <form onSubmit={onAddVoter} className="space-y-2">
-              <Input placeholder="User UUID" value={voterIdInput} onChange={(e) => setVoterIdInput(e.target.value)} required />
-              <Button type="submit" disabled={!canManage}>Add Voter</Button>
+              <Input
+                placeholder="User UUID"
+                value={voterIdInput}
+                onChange={(e) => setVoterIdInput(e.target.value)}
+                required
+              />
+              <Button type="submit" disabled={!canManage}>
+                Add Voter
+              </Button>
             </form>
             <div className="space-y-2">
               {voters.map((voter) => (
-                <div key={voter.user_id} className="flex items-center justify-between rounded border border-border p-2 text-sm">
+                <div
+                  key={voter.user_id}
+                  className="flex items-center justify-between rounded border border-border p-2 text-sm"
+                >
                   <div>
                     <p>{voter.full_name}</p>
                     <p className="text-xs text-slate-600">{voter.email}</p>
