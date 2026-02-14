@@ -9,6 +9,83 @@ use crate::{
     services::vote,
 };
 
+#[get("/me/elections/votable")]
+async fn list_votable_elections(
+    pool: web::Data<PgPool>,
+    auth: AuthenticatedUser,
+) -> Result<HttpResponse, AppError> {
+    require_roles(&auth, &[UserRole::Voter, UserRole::Admin])?;
+
+    let now = chrono::Utc::now();
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
+            i64,
+            bool,
+        ),
+    >(
+        r#"
+        SELECT
+          e.id,
+          e.title,
+          e.description,
+          e.status,
+          e.opens_at,
+          e.closes_at,
+          COUNT(DISTINCT c.id)::bigint AS candidate_count,
+          EXISTS(
+            SELECT 1
+            FROM vote_receipts vr2
+            WHERE vr2.election_id = e.id AND vr2.voter_id = $1
+          ) AS has_voted
+        FROM voter_rolls vr
+        JOIN elections e ON e.id = vr.election_id
+        LEFT JOIN candidates c ON c.election_id = e.id
+        WHERE vr.user_id = $1
+        GROUP BY e.id, e.title, e.description, e.status, e.opens_at, e.closes_at
+        ORDER BY e.opens_at DESC
+        "#,
+    )
+    .bind(auth.user_id)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    let items: Vec<_> = rows
+        .into_iter()
+        .map(
+            |(id, title, description, status, opens_at, closes_at, candidate_count, has_voted)| {
+                let can_vote_now =
+                    status == "published" && now >= opens_at && now <= closes_at && !has_voted;
+
+                serde_json::json!({
+                    "id": id,
+                    "title": title,
+                    "description": description,
+                    "status": status,
+                    "opens_at": opens_at,
+                    "closes_at": closes_at,
+                    "candidate_count": candidate_count,
+                    "has_voted": has_voted,
+                    "can_vote_now": can_vote_now
+                })
+            },
+        )
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": {
+            "elections": items
+        }
+    })))
+}
+
 #[get("/elections/{id}/ballot")]
 async fn get_ballot(
     pool: web::Data<PgPool>,
@@ -101,7 +178,8 @@ async fn get_receipt(
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_ballot)
+    cfg.service(list_votable_elections)
+        .service(get_ballot)
         .service(cast_vote)
         .service(get_receipt);
 }

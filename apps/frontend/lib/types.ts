@@ -59,6 +59,24 @@ export type ElectionListResponse = {
   };
 };
 
+export type VotableElectionSummary = {
+  id: string;
+  title: string;
+  description?: string | null;
+  status: "draft" | "published" | "closed";
+  opens_at: string;
+  closes_at: string;
+  candidate_count: number;
+  has_voted: boolean;
+  can_vote_now: boolean;
+};
+
+export type VotableElectionListResponse = {
+  data: {
+    elections: VotableElectionSummary[];
+  };
+};
+
 export type CandidateListResponse = {
   data: {
     candidates: Candidate[];

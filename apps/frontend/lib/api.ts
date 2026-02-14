@@ -5,6 +5,7 @@ import {
   ElectionListResponse,
   ElectionResultsResponse,
   OrganizationListResponse,
+  VotableElectionListResponse,
   VoteReceipt,
   VoterRollImportReport,
   VoterRollResponse,
@@ -226,6 +227,14 @@ export async function listElections(
   const suffix = query.toString() ? `?${query.toString()}` : "";
 
   return request<ElectionListResponse>(`/elections${suffix}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listMyVotableElections(
+  accessToken: string
+): Promise<VotableElectionListResponse> {
+  return request<VotableElectionListResponse>("/me/elections/votable", {
     headers: authHeaders(accessToken),
   });
 }

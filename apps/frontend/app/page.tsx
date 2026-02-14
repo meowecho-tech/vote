@@ -1,59 +1,164 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ShieldCheck, Vote } from "lucide-react";
 
+import { listMyVotableElections } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import {
   clearAuthTokens,
   getRoleFromAccessToken,
   getStoredAccessToken,
   type UserRole,
 } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/error";
+import type { VotableElectionSummary } from "@/lib/types";
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function buildVoterElectionHint(election: VotableElectionSummary) {
+  if (election.has_voted) {
+    return "You already voted in this election.";
+  }
+
+  if (election.can_vote_now) {
+    return "Ready to vote now.";
+  }
+
+  if (election.status !== "published") {
+    return `Election status: ${election.status}`;
+  }
+
+  const now = Date.now();
+  const opensAt = new Date(election.opens_at).getTime();
+  const closesAt = new Date(election.closes_at).getTime();
+
+  if (!Number.isNaN(opensAt) && now < opensAt) {
+    return `Voting opens at ${formatDateTime(election.opens_at)}`;
+  }
+
+  if (!Number.isNaN(closesAt) && now > closesAt) {
+    return "Voting window has closed.";
+  }
+
+  return "Unavailable right now.";
+}
 
 export default function HomePage() {
-  const router = useRouter();
+  const { error: toastError } = useToast();
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isAuthed, setIsAuthed] = useState(false);
   const [role, setRole] = useState<UserRole | null>(null);
-  const [electionIdInput, setElectionIdInput] = useState("");
+  const [voterElections, setVoterElections] = useState<VotableElectionSummary[]>([]);
+  const [isVoterElectionsLoading, setIsVoterElectionsLoading] = useState(false);
+  const [voterElectionsError, setVoterElectionsError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getStoredAccessToken();
     if (!token) {
+      setAccessToken(null);
       setIsAuthed(false);
       setRole(null);
       return;
     }
 
+    setAccessToken(token);
     setIsAuthed(true);
     setRole(getRoleFromAccessToken(token));
   }, []);
 
-  function signOut() {
-    clearAuthTokens();
-    sessionStorage.removeItem("vote_email");
-    setIsAuthed(false);
-    setRole(null);
-    setElectionIdInput("");
-  }
-
-  function openBallot(event: FormEvent) {
-    event.preventDefault();
-    const electionId = electionIdInput.trim();
-    if (!electionId) {
+  useEffect(() => {
+    if (!accessToken || role !== "voter") {
+      setVoterElections([]);
+      setVoterElectionsError(null);
+      setIsVoterElectionsLoading(false);
       return;
     }
 
-    router.push(`/voter/elections/${encodeURIComponent(electionId)}`);
+    const currentAccessToken = accessToken;
+    let active = true;
+
+    async function loadVoterElections() {
+      setIsVoterElectionsLoading(true);
+      setVoterElectionsError(null);
+      try {
+        const response = await listMyVotableElections(currentAccessToken);
+        if (!active) {
+          return;
+        }
+        setVoterElections(response.data.elections);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        const message = getErrorMessage(error, "failed to load your elections");
+        setVoterElectionsError(message);
+        toastError("Unable to load your elections", message);
+      } finally {
+        if (active) {
+          setIsVoterElectionsLoading(false);
+        }
+      }
+    }
+
+    void loadVoterElections();
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken, role, toastError]);
+
+  function signOut() {
+    clearAuthTokens();
+    sessionStorage.removeItem("vote_email");
+    setAccessToken(null);
+    setIsAuthed(false);
+    setRole(null);
+    setVoterElections([]);
+    setVoterElectionsError(null);
+  }
+
+  function reloadVoterElections() {
+    if (!accessToken || role !== "voter") {
+      return;
+    }
+
+    const currentAccessToken = accessToken;
+    setIsVoterElectionsLoading(true);
+    setVoterElectionsError(null);
+    void listMyVotableElections(currentAccessToken)
+      .then((response) => {
+        setVoterElections(response.data.elections);
+      })
+      .catch((error) => {
+        const message = getErrorMessage(error, "failed to load your elections");
+        setVoterElectionsError(message);
+        toastError("Unable to load your elections", message);
+      })
+      .finally(() => {
+        setIsVoterElectionsLoading(false);
+      });
   }
 
   const isAdmin = role === "admin" || role === "election_officer";
   const isVoter = role === "voter";
   const roleLabel = role ? `Role: ${role}` : "Role: guest";
+  const canVoteNowCount = useMemo(
+    () => voterElections.filter((item) => item.can_vote_now).length,
+    [voterElections]
+  );
 
   return (
     <main className="space-y-6">
@@ -69,8 +174,8 @@ export default function HomePage() {
               Election Command Center for Secure, Verifiable Voting
             </h1>
             <p className="max-w-xl text-sm text-foreground/70 sm:text-base">
-              Manage elections end to end, from organization setup and voter roll to final tally with
-              receipt-based submissions.
+              Election-ready interface for secure ballot access, voter verification, and reliable
+              vote submission with receipts.
             </p>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/55">{roleLabel}</p>
             {isAuthed ? (
@@ -124,20 +229,59 @@ export default function HomePage() {
           {isVoter ? (
             <>
               <p className="text-sm text-foreground/70">
-                ใส่ Election ID เพื่อเข้าไปลงคะแนนได้ทันที จากนั้นเลือกผู้สมัครและส่งบัตรโหวตของคุณ
+                ระบบจะแสดงเฉพาะรายการเลือกตั้งที่บัญชีของคุณมีสิทธิ์ลงคะแนน
               </p>
-              <form onSubmit={openBallot} className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  placeholder="Election UUID"
-                  value={electionIdInput}
-                  onChange={(event) => setElectionIdInput(event.target.value)}
-                  required
-                />
-                <Button type="submit">Go to ballot</Button>
-              </form>
-              <p className="text-xs text-foreground/60">
-                ตัวอย่างลิงก์โดยตรง: <code>/voter/elections/&lt;election-id&gt;</code>
-              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={reloadVoterElections} disabled={isVoterElectionsLoading}>
+                  {isVoterElectionsLoading ? "Refreshing..." : "Refresh my elections"}
+                </Button>
+                <span className="text-xs text-foreground/60">
+                  Can vote now: <strong>{canVoteNowCount}</strong>
+                </span>
+              </div>
+
+              {voterElectionsError ? (
+                <ErrorAlert title="Load elections failed" message={voterElectionsError} />
+              ) : null}
+
+              <div className="space-y-2">
+                {isVoterElectionsLoading ? (
+                  <>
+                    <Skeleton className="h-20 w-full rounded-xl" />
+                    <Skeleton className="h-20 w-full rounded-xl" />
+                  </>
+                ) : voterElections.length === 0 ? (
+                  <p className="text-sm text-foreground/60">No elections assigned to your voter roll.</p>
+                ) : (
+                  voterElections.map((election) => (
+                    <div
+                      key={election.id}
+                      className="rounded-xl border border-border/80 bg-card/70 p-3 text-sm"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <p className="font-semibold">{election.title}</p>
+                        <p className="text-xs text-foreground/60">{election.id}</p>
+                        <p className="text-xs text-foreground/70">{buildVoterElectionHint(election)}</p>
+                        <p className="text-xs text-foreground/60">
+                          Opens: {formatDateTime(election.opens_at)} | Closes: {formatDateTime(election.closes_at)}
+                        </p>
+                      </div>
+                      <div className="mt-2">
+                        {election.can_vote_now ? (
+                          <Link href={`/voter/elections/${election.id}`}>
+                            <Button size="sm">Go to vote</Button>
+                          </Link>
+                        ) : (
+                          <Button size="sm" variant="outline" disabled>
+                            {election.has_voted ? "Already voted" : "Unavailable"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </>
           ) : isAuthed ? (
             <p className="text-sm text-foreground/70">
