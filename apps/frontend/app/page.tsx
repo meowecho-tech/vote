@@ -1,25 +1,59 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ArrowRight, Landmark, ShieldCheck, Vote } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
+import { ArrowRight, ShieldCheck, Vote } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { clearAuthTokens, getStoredAccessToken } from "@/lib/auth";
+import { Input } from "@/components/ui/input";
+import {
+  clearAuthTokens,
+  getRoleFromAccessToken,
+  getStoredAccessToken,
+  type UserRole,
+} from "@/lib/auth";
 
 export default function HomePage() {
+  const router = useRouter();
   const [isAuthed, setIsAuthed] = useState(false);
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [electionIdInput, setElectionIdInput] = useState("");
 
   useEffect(() => {
-    setIsAuthed(Boolean(getStoredAccessToken()));
+    const token = getStoredAccessToken();
+    if (!token) {
+      setIsAuthed(false);
+      setRole(null);
+      return;
+    }
+
+    setIsAuthed(true);
+    setRole(getRoleFromAccessToken(token));
   }, []);
 
   function signOut() {
     clearAuthTokens();
     sessionStorage.removeItem("vote_email");
     setIsAuthed(false);
+    setRole(null);
+    setElectionIdInput("");
   }
+
+  function openBallot(event: FormEvent) {
+    event.preventDefault();
+    const electionId = electionIdInput.trim();
+    if (!electionId) {
+      return;
+    }
+
+    router.push(`/voter/elections/${encodeURIComponent(electionId)}`);
+  }
+
+  const isAdmin = role === "admin" || role === "election_officer";
+  const isVoter = role === "voter";
+  const roleLabel = role ? `Role: ${role}` : "Role: guest";
 
   return (
     <main className="space-y-6">
@@ -38,14 +72,17 @@ export default function HomePage() {
               Manage elections end to end, from organization setup and voter roll to final tally with
               receipt-based submissions.
             </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/55">{roleLabel}</p>
             {isAuthed ? (
               <div className="flex flex-wrap gap-3">
-                <Link href="/admin/elections">
-                  <Button>
-                    Open Console
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
+                {isAdmin ? (
+                  <Link href="/admin/elections">
+                    <Button>
+                      Open Console
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                ) : null}
                 <Button variant="outline" onClick={signOut}>
                   Sign out
                 </Button>
@@ -57,9 +94,6 @@ export default function HomePage() {
                     Go to login
                     <ArrowRight className="h-4 w-4" />
                   </Button>
-                </Link>
-                <Link href="/admin/elections">
-                  <Button variant="outline">Admin console</Button>
                 </Link>
               </div>
             )}
@@ -80,41 +114,52 @@ export default function HomePage() {
                 <p className="text-xs text-foreground/60">Receipt ID returned for each valid vote.</p>
               </div>
             </Card>
-            <Card className="flex items-center gap-3 p-4">
-              <Landmark className="h-5 w-5 text-primary" />
-              <div>
-                <p className="font-semibold">Election Lifecycle Controls</p>
-                <p className="text-xs text-foreground/60">Draft, publish, close, and inspect results.</p>
-              </div>
-            </Card>
           </div>
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={`grid gap-4 ${isAdmin ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
         <Card className="fade-up space-y-3">
           <h2 className="text-lg font-semibold tracking-tight">Voter Workflow</h2>
-          <p className="text-sm text-foreground/70">
-            Authenticate with OTP, open your ballot link, select candidate(s), and submit once for a
-            receipt.
-          </p>
-          {isAuthed ? (
-            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Status: Signed in</p>
+          {isVoter ? (
+            <>
+              <p className="text-sm text-foreground/70">
+                ใส่ Election ID เพื่อเข้าไปลงคะแนนได้ทันที จากนั้นเลือกผู้สมัครและส่งบัตรโหวตของคุณ
+              </p>
+              <form onSubmit={openBallot} className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  placeholder="Election UUID"
+                  value={electionIdInput}
+                  onChange={(event) => setElectionIdInput(event.target.value)}
+                  required
+                />
+                <Button type="submit">Go to ballot</Button>
+              </form>
+              <p className="text-xs text-foreground/60">
+                ตัวอย่างลิงก์โดยตรง: <code>/voter/elections/&lt;election-id&gt;</code>
+              </p>
+            </>
+          ) : isAuthed ? (
+            <p className="text-sm text-foreground/70">
+              บัญชีนี้ไม่ใช่ voter role สำหรับการลงคะแนนเสียง หากต้องการโหวตให้เข้าสู่ระบบด้วย voter account
+            </p>
           ) : (
-            <p className="text-sm text-foreground/60">Status: Please sign in before voting.</p>
+            <p className="text-sm text-foreground/60">Sign in ก่อนเพื่อเข้าสู่หน้าลงคะแนนของคุณ</p>
           )}
         </Card>
 
-        <Card className="fade-up space-y-3">
-          <h2 className="text-lg font-semibold tracking-tight">Admin Workflow</h2>
-          <p className="text-sm text-foreground/70">
-            Create organization and election, manage candidates and voter roll, then publish and review
-            tally results.
-          </p>
-          <Link className="text-sm font-semibold text-primary hover:underline" href="/admin/elections">
-            Open admin console
-          </Link>
-        </Card>
+        {isAdmin ? (
+          <Card className="fade-up space-y-3">
+            <h2 className="text-lg font-semibold tracking-tight">Admin Workflow</h2>
+            <p className="text-sm text-foreground/70">
+              Create organization and election, manage candidates and voter roll, then publish and review
+              tally results.
+            </p>
+            <Link className="text-sm font-semibold text-primary hover:underline" href="/admin/elections">
+              Open admin console
+            </Link>
+          </Card>
+        ) : null}
       </div>
     </main>
   );
