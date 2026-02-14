@@ -48,8 +48,15 @@ export async function refresh(input: { refresh_token: string }) {
   });
 }
 
-export async function getBallot(electionId: string): Promise<BallotResponse> {
-  return request<BallotResponse>(`/elections/${electionId}/ballot`);
+export async function getBallot(
+  electionId: string,
+  accessToken: string
+): Promise<BallotResponse> {
+  return request<BallotResponse>(`/elections/${electionId}/ballot`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 }
 
 export async function castVote(
