@@ -6,8 +6,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
 import {
   addVoterRoll,
   closeElection,
@@ -28,6 +30,7 @@ import {
   updateCandidate,
 } from "@/lib/api";
 import { getRoleFromAccessToken, getStoredAccessToken } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/error";
 import type {
   Candidate,
   ElectionSummary,
@@ -38,10 +41,12 @@ import type {
 } from "@/lib/types";
 
 type ElectionStatus = "draft" | "published" | "closed";
+type Feedback = { type: "success" | "error"; text: string };
 const DEFAULT_PAGINATION: PaginationMeta = { page: 1, per_page: 20, total: 0, total_pages: 0 };
 
 export default function AdminElectionPage() {
   const router = useRouter();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [token, setToken] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [authorized, setAuthorized] = useState(false);
@@ -53,7 +58,7 @@ export default function AdminElectionPage() {
   const [description, setDescription] = useState("");
   const [opensAt, setOpensAt] = useState("");
   const [closesAt, setClosesAt] = useState("");
-  const [createResult, setCreateResult] = useState<string | null>(null);
+  const [createResult, setCreateResult] = useState<Feedback | null>(null);
 
   const [electionId, setElectionId] = useState("");
   const [elections, setElections] = useState<ElectionSummary[]>([]);
@@ -88,12 +93,42 @@ export default function AdminElectionPage() {
   const [importReport, setImportReport] = useState<VoterRollImportReport["data"] | null>(null);
 
   const [results, setResults] = useState<{ name: string; total: number }[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<Feedback | null>(null);
 
   const canManage = useMemo(
     () => Boolean(token && electionId && authorized),
     [token, electionId, authorized]
   );
+
+  function clearGlobalMessage() {
+    setMessage(null);
+  }
+
+  function clearCreateResult() {
+    setCreateResult(null);
+  }
+
+  function pushGlobalSuccess(text: string) {
+    setMessage({ type: "success", text });
+    toastSuccess("Success", text);
+  }
+
+  function pushGlobalError(error: unknown, fallback: string) {
+    const text = getErrorMessage(error, fallback);
+    setMessage({ type: "error", text });
+    toastError("Request failed", text);
+  }
+
+  function pushCreateSuccess(text: string) {
+    setCreateResult({ type: "success", text });
+    toastSuccess("Election created", text);
+  }
+
+  function pushCreateError(error: unknown, fallback: string) {
+    const text = getErrorMessage(error, fallback);
+    setCreateResult({ type: "error", text });
+    toastError("Unable to create election", text);
+  }
 
   useEffect(() => {
     const accessToken = getStoredAccessToken();
@@ -125,8 +160,8 @@ export default function AdminElectionPage() {
       if (!organizationId && res.data.organizations.length > 0) {
         setOrganizationId(res.data.organizations[0].id);
       }
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "failed to load organizations");
+    } catch (error) {
+      pushGlobalError(error, "failed to load organizations");
     }
   }
 
@@ -140,17 +175,17 @@ export default function AdminElectionPage() {
       setElections(res.data.elections);
       setElectionsPagination(res.data.pagination);
       setElectionsPage(res.data.pagination.page);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "failed to load elections");
+    } catch (error) {
+      pushGlobalError(error, "failed to load elections");
     }
   }
 
   async function onCreateOrganization(event: FormEvent) {
     event.preventDefault();
-    setMessage(null);
+    clearGlobalMessage();
 
     if (!token || !authorized) {
-      setMessage("Please login as admin first");
+      pushGlobalError("Please login as admin first", "Please login as admin first");
       return;
     }
 
@@ -159,19 +194,19 @@ export default function AdminElectionPage() {
       setOrganizationName("");
       await loadOrganizations();
       setOrganizationId(res.data.organization_id);
-      setMessage(`Organization created: ${res.data.name}`);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "failed to create organization");
+      pushGlobalSuccess(`Organization created: ${res.data.name}`);
+    } catch (error) {
+      pushGlobalError(error, "failed to create organization");
     }
   }
 
   async function onCreateElection(event: FormEvent) {
     event.preventDefault();
-    setCreateResult(null);
-    setMessage(null);
+    clearCreateResult();
+    clearGlobalMessage();
 
     if (!token || !authorized) {
-      setCreateResult("Please login as admin first");
+      pushCreateError("Please login as admin first", "Please login as admin first");
       return;
     }
 
@@ -188,20 +223,20 @@ export default function AdminElectionPage() {
       setElectionId(createdId);
       setCandidatesPage(1);
       setVotersPage(1);
-      setCreateResult(`Created election: ${createdId}`);
+      pushCreateSuccess(`Created election: ${createdId}`);
       await loadElections(undefined, 1);
-    } catch (err) {
-      setCreateResult(err instanceof Error ? err.message : "failed to create election");
+    } catch (error) {
+      pushCreateError(error, "failed to create election");
     }
   }
 
   async function loadElectionData(candidatePageOverride?: number, voterPageOverride?: number) {
     if (!token || !electionId || !authorized) {
-      setMessage("Missing token or election id");
+      pushGlobalError("Missing token or election id", "Missing token or election id");
       return;
     }
 
-    setMessage(null);
+    clearGlobalMessage();
 
     try {
       const targetCandidatePage = candidatePageOverride ?? candidatesPage;
@@ -228,8 +263,8 @@ export default function AdminElectionPage() {
       setVoters(voterList.data.voters);
       setVotersPagination(voterList.data.pagination);
       setVotersPage(voterList.data.pagination.page);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "failed to load election data");
+    } catch (error) {
+      pushGlobalError(error, "failed to load election data");
     }
   }
 
@@ -238,14 +273,14 @@ export default function AdminElectionPage() {
     if (!window.confirm("Publish this election now? This will open voting if time window is active.")) {
       return;
     }
-    setMessage(null);
+    clearGlobalMessage();
     try {
       await publishElection(token, electionId);
       await loadElectionData();
       await loadElections();
-      setMessage("Election published");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "publish failed");
+      pushGlobalSuccess("Election published");
+    } catch (error) {
+      pushGlobalError(error, "publish failed");
     }
   }
 
@@ -254,14 +289,14 @@ export default function AdminElectionPage() {
     if (!window.confirm("Close this election now? Voting will stop immediately.")) {
       return;
     }
-    setMessage(null);
+    clearGlobalMessage();
     try {
       await closeElection(token, electionId);
       await loadElectionData();
       await loadElections();
-      setMessage("Election closed");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "close failed");
+      pushGlobalSuccess("Election closed");
+    } catch (error) {
+      pushGlobalError(error, "close failed");
     }
   }
 
@@ -277,9 +312,9 @@ export default function AdminElectionPage() {
       setCandidateName("");
       setCandidateManifesto("");
       await loadElectionData(candidatesPage, votersPage);
-      setMessage("Candidate added");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "add candidate failed");
+      pushGlobalSuccess("Candidate added");
+    } catch (error) {
+      pushGlobalError(error, "add candidate failed");
     }
   }
 
@@ -305,9 +340,9 @@ export default function AdminElectionPage() {
       });
       cancelEditCandidate();
       await loadElectionData(candidatesPage, votersPage);
-      setMessage("Candidate updated");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "update candidate failed");
+      pushGlobalSuccess("Candidate updated");
+    } catch (error) {
+      pushGlobalError(error, "update candidate failed");
     }
   }
 
@@ -320,9 +355,9 @@ export default function AdminElectionPage() {
     try {
       await deleteCandidate(token, electionId, candidateId);
       await loadElectionData(candidatesPage, votersPage);
-      setMessage("Candidate removed");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "delete candidate failed");
+      pushGlobalSuccess("Candidate removed");
+    } catch (error) {
+      pushGlobalError(error, "delete candidate failed");
     }
   }
 
@@ -334,9 +369,9 @@ export default function AdminElectionPage() {
       await addVoterRoll(token, electionId, voterIdInput);
       setVoterIdInput("");
       await loadElectionData(candidatesPage, votersPage);
-      setMessage("Voter added to roll");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "add voter failed");
+      pushGlobalSuccess("Voter added to roll");
+    } catch (error) {
+      pushGlobalError(error, "add voter failed");
     }
   }
 
@@ -349,9 +384,9 @@ export default function AdminElectionPage() {
     try {
       await removeVoterRoll(token, electionId, userId);
       await loadElectionData(candidatesPage, votersPage);
-      setMessage("Voter removed from roll");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "remove voter failed");
+      pushGlobalSuccess("Voter removed from roll");
+    } catch (error) {
+      pushGlobalError(error, "remove voter failed");
     }
   }
 
@@ -376,9 +411,9 @@ export default function AdminElectionPage() {
       if (!dryRun) {
         await loadElectionData();
       }
-      setMessage(dryRun ? "Validation completed" : "Import completed");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "import failed");
+      pushGlobalSuccess(dryRun ? "Validation completed" : "Import completed");
+    } catch (error) {
+      pushGlobalError(error, "import failed");
     }
   }
 
@@ -388,8 +423,9 @@ export default function AdminElectionPage() {
     try {
       const res = await getElectionResults(token, electionId);
       setResults(res.data.results.map((item) => ({ name: item.name, total: item.total })));
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "failed to load results");
+      pushGlobalSuccess("Results loaded");
+    } catch (error) {
+      pushGlobalError(error, "failed to load results");
     }
   }
 
@@ -406,9 +442,9 @@ export default function AdminElectionPage() {
       });
       await loadElectionData(candidatesPage, votersPage);
       await loadElections(undefined, electionsPage);
-      setMessage("Election updated");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "failed to update election");
+      pushGlobalSuccess("Election updated");
+    } catch (error) {
+      pushGlobalError(error, "failed to update election");
     }
   }
 
@@ -556,7 +592,15 @@ export default function AdminElectionPage() {
             <Button type="submit">Create Election</Button>
           </div>
         </form>
-        {createResult ? <p className="text-sm">{createResult}</p> : null}
+        {createResult ? (
+          createResult.type === "error" ? (
+            <ErrorAlert title="Create election failed" message={createResult.text} />
+          ) : (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
+              {createResult.text}
+            </p>
+          )
+        ) : null}
       </Card>
 
       <Card className="space-y-4">
@@ -960,7 +1004,15 @@ export default function AdminElectionPage() {
           </Card>
         ) : null}
 
-        {message ? <p className="text-sm">{message}</p> : null}
+        {message ? (
+          message.type === "error" ? (
+            <ErrorAlert message={message.text} />
+          ) : (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
+              {message.text}
+            </p>
+          )
+        ) : null}
       </Card>
     </main>
   );

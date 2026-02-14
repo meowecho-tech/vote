@@ -14,6 +14,7 @@ import {
   getStoredRefreshToken,
   persistAuthTokens,
 } from "@/lib/auth";
+import { ApiError } from "@/lib/error";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
 
@@ -84,11 +85,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         if (retryRes.ok) {
           return retryRes.json() as Promise<T>;
         }
+
+        const retryBody = await retryRes.json().catch(() => null);
+        const retryMessage =
+          (typeof retryBody?.error === "string" && retryBody.error) ||
+          (typeof retryBody?.message === "string" && retryBody.message) ||
+          "request failed";
+        const retryCode = typeof retryBody?.code === "string" ? retryBody.code : null;
+        throw new ApiError(retryMessage, {
+          status: retryRes.status,
+          code: retryCode,
+          details: retryBody,
+        });
       }
     }
 
-    const body = await res.json().catch(() => ({ error: "request failed" }));
-    throw new Error(body.error || "request failed");
+    const body = await res.json().catch(() => null);
+    const message =
+      (typeof body?.error === "string" && body.error) ||
+      (typeof body?.message === "string" && body.message) ||
+      "request failed";
+    const code = typeof body?.code === "string" ? body.code : null;
+    throw new ApiError(message, { status: res.status, code, details: body });
   }
 
   return res.json() as Promise<T>;

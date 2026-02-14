@@ -5,14 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
 import { login } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import { sanitizeNextPath } from "@/lib/auth";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { info, error: notifyError } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,9 +31,12 @@ export function LoginForm() {
       sessionStorage.setItem("vote_email", email);
       const next = sanitizeNextPath(searchParams.get("next"));
       const verifyPath = next ? `/verify-otp?next=${encodeURIComponent(next)}` : "/verify-otp";
+      info("OTP required", "Please verify the one-time code to continue.");
       router.push(verifyPath);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "login failed");
+    } catch (error) {
+      const message = getErrorMessage(error, "login failed");
+      setError(message);
+      notifyError("Sign-in failed", message);
     } finally {
       setLoading(false);
     }
@@ -69,11 +76,7 @@ export function LoginForm() {
             required
           />
         </div>
-        {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-            {error}
-          </p>
-        ) : null}
+        {error ? <ErrorAlert title="Sign-in failed" message={error} /> : null}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Signing in..." : "Continue"}
         </Button>

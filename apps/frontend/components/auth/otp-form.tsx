@@ -5,14 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
 import { verifyOtp } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import { persistAuthTokens, sanitizeNextPath } from "@/lib/auth";
 
 export function OtpForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { success, error: notifyError } = useToast();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +34,12 @@ export function OtpForm() {
       const result = await verifyOtp({ email, code });
       persistAuthTokens(result.data.access_token, result.data.refresh_token);
       const next = sanitizeNextPath(searchParams.get("next"));
+      success("Signed in", "Authentication completed successfully.");
       router.push(next ?? "/");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "verification failed");
+    } catch (error) {
+      const message = getErrorMessage(error, "verification failed");
+      setError(message);
+      notifyError("OTP verification failed", message);
     } finally {
       setLoading(false);
     }
@@ -70,11 +77,7 @@ export function OtpForm() {
             required
           />
         </div>
-        {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-            {error}
-          </p>
-        ) : null}
+        {error ? <ErrorAlert title="OTP verification failed" message={error} /> : null}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Verifying..." : "Verify"}
         </Button>

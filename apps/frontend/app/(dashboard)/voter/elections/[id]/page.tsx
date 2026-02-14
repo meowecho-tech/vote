@@ -5,13 +5,17 @@ import { useParams, useRouter } from "next/navigation";
 
 import { Ballot } from "@/components/voter/ballot";
 import { Card } from "@/components/ui/card";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { useToast } from "@/components/ui/toast";
 import { getBallot } from "@/lib/api";
 import { getStoredAccessToken } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/error";
 import type { BallotResponse } from "@/lib/types";
 
 export default function VoterElectionPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { error: notifyError } = useToast();
   const [ballot, setBallot] = useState<BallotResponse["data"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,8 +34,10 @@ export default function VoterElectionPage() {
       try {
         const result = await getBallot(params.id, token);
         setBallot(result.data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "failed to load ballot");
+      } catch (error) {
+        const message = getErrorMessage(error, "failed to load ballot");
+        setError(message);
+        notifyError("Unable to load ballot", message);
       } finally {
         setLoading(false);
       }
@@ -57,9 +63,7 @@ export default function VoterElectionPage() {
       <main className="mx-auto max-w-3xl">
         <Card className="fade-up space-y-2">
           <h1 className="text-xl font-semibold">Unable to open ballot</h1>
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-            {error ?? "ballot not found"}
-          </p>
+          <ErrorAlert title="Ballot error" message={error ?? "ballot not found"} />
         </Card>
       </main>
     );

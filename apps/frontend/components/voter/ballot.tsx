@@ -6,7 +6,10 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { useToast } from "@/components/ui/toast";
 import { getStoredAccessToken } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/error";
 import { cn } from "@/lib/utils";
 import { castVote } from "@/lib/api";
 import type { Candidate } from "@/lib/types";
@@ -18,6 +21,7 @@ type BallotProps = {
 };
 
 export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
+  const { success, error: notifyError } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,10 +51,14 @@ export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
         selections: selected.map((candidate_id) => ({ candidate_id })),
       });
 
-      setMessage(`Submitted successfully. Receipt: ${response.data.receipt_id}`);
+      const successMessage = `Submitted successfully. Receipt: ${response.data.receipt_id}`;
+      setMessage(successMessage);
+      success("Vote submitted", `Receipt: ${response.data.receipt_id}`);
       setSelected([]);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "vote failed");
+    } catch (error) {
+      const message = getErrorMessage(error, "vote failed");
+      setMessage(message);
+      notifyError("Vote submission failed", message);
     } finally {
       setSubmitting(false);
     }
@@ -111,17 +119,19 @@ export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
       </div>
 
       {message ? (
-        <p
-          className={cn(
-            "flex items-start gap-2 rounded-xl border px-3 py-2 text-sm",
-            submitted
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200"
-              : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-          )}
-        >
-          {submitted ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : null}
-          <span>{message}</span>
-        </p>
+        submitted ? (
+          <p
+            className={cn(
+              "flex items-start gap-2 rounded-xl border px-3 py-2 text-sm",
+              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200"
+            )}
+          >
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{message}</span>
+          </p>
+        ) : (
+          <ErrorAlert title="Vote submission failed" message={message} />
+        )
       ) : null}
     </Card>
   );
