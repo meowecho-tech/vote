@@ -10,4 +10,4 @@ backend-run:
 	cd apps/backend && cargo run
 
 frontend-dev:
-	cd apps/frontend && npm run dev
+	cd apps/frontend && bun dev
