@@ -203,8 +203,16 @@ export async function updateElection(
   });
 }
 
-export async function listElections(accessToken: string): Promise<ElectionListResponse> {
-  return request<ElectionListResponse>("/elections", {
+export async function listElections(
+  accessToken: string,
+  params?: { page?: number; per_page?: number }
+): Promise<ElectionListResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.per_page) query.set("per_page", String(params.per_page));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return request<ElectionListResponse>(`/elections${suffix}`, {
     headers: authHeaders(accessToken),
   });
 }
@@ -234,9 +242,15 @@ export async function getElectionResults(
 
 export async function listCandidates(
   accessToken: string,
-  electionId: string
+  electionId: string,
+  params?: { page?: number; per_page?: number }
 ): Promise<CandidateListResponse> {
-  return request<CandidateListResponse>(`/elections/${electionId}/candidates`, {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.per_page) query.set("per_page", String(params.per_page));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return request<CandidateListResponse>(`/elections/${electionId}/candidates${suffix}`, {
     headers: authHeaders(accessToken),
   });
 }
@@ -275,9 +289,15 @@ export async function deleteCandidate(accessToken: string, electionId: string, c
 
 export async function listVoterRolls(
   accessToken: string,
-  electionId: string
+  electionId: string,
+  params?: { page?: number; per_page?: number }
 ): Promise<VoterRollResponse> {
-  return request<VoterRollResponse>(`/elections/${electionId}/voter-rolls`, {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.per_page) query.set("per_page", String(params.per_page));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return request<VoterRollResponse>(`/elections/${electionId}/voter-rolls${suffix}`, {
     headers: authHeaders(accessToken),
   });
 }

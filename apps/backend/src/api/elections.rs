@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use actix_web::{delete, get, patch, post, web, HttpResponse};
+use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -14,6 +15,27 @@ use crate::{
     middleware::{require_roles, AuthenticatedUser},
     services::election,
 };
+
+#[derive(Debug, Deserialize)]
+struct PaginationQuery {
+    page: Option<i64>,
+    per_page: Option<i64>,
+}
+
+fn normalize_pagination(query: &PaginationQuery, max_per_page: i64) -> (i64, i64, i64) {
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, max_per_page);
+    let offset = (page - 1) * per_page;
+    (page, per_page, offset)
+}
+
+fn total_pages(total: i64, per_page: i64) -> i64 {
+    if total <= 0 {
+        0
+    } else {
+        (total + per_page - 1) / per_page
+    }
+}
 
 #[get("/organizations")]
 async fn list_organizations(
@@ -90,6 +112,7 @@ async fn create_election(
 async fn list_elections(
     pool: web::Data<PgPool>,
     auth: AuthenticatedUser,
+    query: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, AppError> {
     require_roles(
         &auth,
@@ -99,6 +122,13 @@ async fn list_elections(
             UserRole::Auditor,
         ],
     )?;
+
+    let (page, per_page, offset) = normalize_pagination(&query, 100);
+
+    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM elections")
+        .fetch_one(pool.get_ref())
+        .await
+        .map_err(|_| AppError::Internal)?;
 
     let rows = sqlx::query_as::<
         _,
@@ -128,8 +158,11 @@ async fn list_elections(
         LEFT JOIN voter_rolls vr ON vr.election_id = e.id
         GROUP BY e.id, e.title, e.description, e.status, e.opens_at, e.closes_at
         ORDER BY e.created_at DESC
+        LIMIT $1 OFFSET $2
         "#,
     )
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(pool.get_ref())
     .await
     .map_err(|_| AppError::Internal)?;
@@ -162,7 +195,15 @@ async fn list_elections(
         .collect();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "data": { "elections": items }
+        "data": {
+            "elections": items,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": total_pages(total, per_page)
+            }
+        }
     })))
 }
 
@@ -386,6 +427,7 @@ async fn list_candidates(
     pool: web::Data<PgPool>,
     auth: AuthenticatedUser,
     path: web::Path<Uuid>,
+    query: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, AppError> {
     require_roles(
         &auth,
@@ -393,10 +435,20 @@ async fn list_candidates(
     )?;
 
     let election_id = path.into_inner();
+    let (page, per_page, offset) = normalize_pagination(&query, 100);
+    let total =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM candidates WHERE election_id = $1")
+            .bind(election_id)
+            .fetch_one(pool.get_ref())
+            .await
+            .map_err(|_| AppError::Internal)?;
+
     let rows = sqlx::query_as::<_, (Uuid, String, Option<String>)>(
-        "SELECT id, name, manifesto FROM candidates WHERE election_id = $1 ORDER BY created_at ASC",
+        "SELECT id, name, manifesto FROM candidates WHERE election_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
     )
     .bind(election_id)
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(pool.get_ref())
     .await
     .map_err(|_| AppError::Internal)?;
@@ -408,7 +460,17 @@ async fn list_candidates(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": { "candidates": items } })))
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": {
+            "candidates": items,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": total_pages(total, per_page)
+            }
+        }
+    })))
 }
 
 #[post("/elections/{id}/candidates")]
@@ -511,10 +573,19 @@ async fn list_voter_rolls(
     pool: web::Data<PgPool>,
     auth: AuthenticatedUser,
     path: web::Path<Uuid>,
+    query: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, AppError> {
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let election_id = path.into_inner();
+    let (page, per_page, offset) = normalize_pagination(&query, 100);
+    let total =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM voter_rolls WHERE election_id = $1")
+            .bind(election_id)
+            .fetch_one(pool.get_ref())
+            .await
+            .map_err(|_| AppError::Internal)?;
+
     let rows = sqlx::query_as::<_, (Uuid, String, String)>(
         r#"
         SELECT u.id, u.email, u.full_name
@@ -522,9 +593,12 @@ async fn list_voter_rolls(
         JOIN users u ON u.id = vr.user_id
         WHERE vr.election_id = $1
         ORDER BY u.email ASC
+        LIMIT $2 OFFSET $3
         "#,
     )
     .bind(election_id)
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(pool.get_ref())
     .await
     .map_err(|_| AppError::Internal)?;
@@ -536,7 +610,17 @@ async fn list_voter_rolls(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": { "voters": items } })))
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "data": {
+            "voters": items,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": total_pages(total, per_page)
+            }
+        }
+    })))
 }
 
 #[post("/elections/{id}/voter-rolls")]

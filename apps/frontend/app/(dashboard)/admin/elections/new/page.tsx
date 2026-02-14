@@ -32,11 +32,13 @@ import type {
   Candidate,
   ElectionSummary,
   Organization,
+  PaginationMeta,
   VoterRollImportReport,
   VoterRollEntry,
 } from "@/lib/types";
 
 type ElectionStatus = "draft" | "published" | "closed";
+const DEFAULT_PAGINATION: PaginationMeta = { page: 1, per_page: 20, total: 0, total_pages: 0 };
 
 export default function AdminElectionPage() {
   const router = useRouter();
@@ -55,6 +57,8 @@ export default function AdminElectionPage() {
 
   const [electionId, setElectionId] = useState("");
   const [elections, setElections] = useState<ElectionSummary[]>([]);
+  const [electionsPagination, setElectionsPagination] = useState<PaginationMeta>(DEFAULT_PAGINATION);
+  const [electionsPage, setElectionsPage] = useState(1);
   const [electionSearch, setElectionSearch] = useState("");
   const [electionStatusFilter, setElectionStatusFilter] = useState<"all" | ElectionStatus>("all");
   const [status, setStatus] = useState<ElectionStatus | null>(null);
@@ -67,6 +71,8 @@ export default function AdminElectionPage() {
   const [editClosesAt, setEditClosesAt] = useState("");
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [candidatesPagination, setCandidatesPagination] = useState<PaginationMeta>(DEFAULT_PAGINATION);
+  const [candidatesPage, setCandidatesPage] = useState(1);
   const [candidateName, setCandidateName] = useState("");
   const [candidateManifesto, setCandidateManifesto] = useState("");
   const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null);
@@ -74,6 +80,8 @@ export default function AdminElectionPage() {
   const [editCandidateManifesto, setEditCandidateManifesto] = useState("");
 
   const [voters, setVoters] = useState<VoterRollEntry[]>([]);
+  const [votersPagination, setVotersPagination] = useState<PaginationMeta>(DEFAULT_PAGINATION);
+  const [votersPage, setVotersPage] = useState(1);
   const [voterIdInput, setVoterIdInput] = useState("");
   const [importFormat, setImportFormat] = useState<"csv" | "json">("csv");
   const [importPayload, setImportPayload] = useState("");
@@ -103,7 +111,7 @@ export default function AdminElectionPage() {
 
     if (allow) {
       void loadOrganizations(accessToken);
-      void loadElections(accessToken);
+      void loadElections(accessToken, 1);
     }
   }, [router]);
 
@@ -122,13 +130,16 @@ export default function AdminElectionPage() {
     }
   }
 
-  async function loadElections(accessTokenOverride?: string) {
+  async function loadElections(accessTokenOverride?: string, pageOverride?: number) {
     const accessToken = accessTokenOverride ?? token;
     if (!accessToken) return;
 
     try {
-      const res = await listElections(accessToken);
+      const page = pageOverride ?? electionsPage;
+      const res = await listElections(accessToken, { page, per_page: 10 });
       setElections(res.data.elections);
+      setElectionsPagination(res.data.pagination);
+      setElectionsPage(res.data.pagination.page);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "failed to load elections");
     }
@@ -175,14 +186,16 @@ export default function AdminElectionPage() {
 
       const createdId = res.data.election_id;
       setElectionId(createdId);
+      setCandidatesPage(1);
+      setVotersPage(1);
       setCreateResult(`Created election: ${createdId}`);
-      await loadElections();
+      await loadElections(undefined, 1);
     } catch (err) {
       setCreateResult(err instanceof Error ? err.message : "failed to create election");
     }
   }
 
-  async function loadElectionData() {
+  async function loadElectionData(candidatePageOverride?: number, voterPageOverride?: number) {
     if (!token || !electionId || !authorized) {
       setMessage("Missing token or election id");
       return;
@@ -191,10 +204,12 @@ export default function AdminElectionPage() {
     setMessage(null);
 
     try {
+      const targetCandidatePage = candidatePageOverride ?? candidatesPage;
+      const targetVoterPage = voterPageOverride ?? votersPage;
       const [election, candidateList, voterList] = await Promise.all([
         getElection(token, electionId),
-        listCandidates(token, electionId),
-        listVoterRolls(token, electionId),
+        listCandidates(token, electionId, { page: targetCandidatePage, per_page: 10 }),
+        listVoterRolls(token, electionId, { page: targetVoterPage, per_page: 10 }),
       ]);
 
       setStatus(election.data.status);
@@ -208,7 +223,11 @@ export default function AdminElectionPage() {
       setEditOpensAt(new Date(election.data.opens_at).toISOString().slice(0, 16));
       setEditClosesAt(new Date(election.data.closes_at).toISOString().slice(0, 16));
       setCandidates(candidateList.data.candidates);
+      setCandidatesPagination(candidateList.data.pagination);
+      setCandidatesPage(candidateList.data.pagination.page);
       setVoters(voterList.data.voters);
+      setVotersPagination(voterList.data.pagination);
+      setVotersPage(voterList.data.pagination.page);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "failed to load election data");
     }
@@ -251,7 +270,7 @@ export default function AdminElectionPage() {
       });
       setCandidateName("");
       setCandidateManifesto("");
-      await loadElectionData();
+      await loadElectionData(candidatesPage, votersPage);
       setMessage("Candidate added");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "add candidate failed");
@@ -279,7 +298,7 @@ export default function AdminElectionPage() {
         manifesto: editCandidateManifesto || null,
       });
       cancelEditCandidate();
-      await loadElectionData();
+      await loadElectionData(candidatesPage, votersPage);
       setMessage("Candidate updated");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "update candidate failed");
@@ -291,7 +310,7 @@ export default function AdminElectionPage() {
 
     try {
       await deleteCandidate(token, electionId, candidateId);
-      await loadElectionData();
+      await loadElectionData(candidatesPage, votersPage);
       setMessage("Candidate removed");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "delete candidate failed");
@@ -305,7 +324,7 @@ export default function AdminElectionPage() {
     try {
       await addVoterRoll(token, electionId, voterIdInput);
       setVoterIdInput("");
-      await loadElectionData();
+      await loadElectionData(candidatesPage, votersPage);
       setMessage("Voter added to roll");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "add voter failed");
@@ -317,7 +336,7 @@ export default function AdminElectionPage() {
 
     try {
       await removeVoterRoll(token, electionId, userId);
-      await loadElectionData();
+      await loadElectionData(candidatesPage, votersPage);
       setMessage("Voter removed from roll");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "remove voter failed");
@@ -365,8 +384,8 @@ export default function AdminElectionPage() {
         opens_at: new Date(editOpensAt).toISOString(),
         closes_at: new Date(editClosesAt).toISOString(),
       });
-      await loadElectionData();
-      await loadElections();
+      await loadElectionData(candidatesPage, votersPage);
+      await loadElections(undefined, electionsPage);
       setMessage("Election updated");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "failed to update election");
@@ -399,6 +418,13 @@ export default function AdminElectionPage() {
       item.id.toLowerCase().includes(electionSearch.toLowerCase());
     return byStatus && bySearch;
   });
+
+  const hasPrevElections = electionsPagination.page > 1;
+  const hasNextElections = electionsPagination.page < electionsPagination.total_pages;
+  const hasPrevCandidates = candidatesPagination.page > 1;
+  const hasNextCandidates = candidatesPagination.page < candidatesPagination.total_pages;
+  const hasPrevVoters = votersPagination.page > 1;
+  const hasNextVoters = votersPagination.page < votersPagination.total_pages;
 
   return (
     <main className="mx-auto max-w-5xl space-y-4">
@@ -527,6 +553,29 @@ export default function AdminElectionPage() {
         <Button variant="outline" onClick={() => void loadElections()} disabled={!token || !authorized}>
           Refresh Elections
         </Button>
+        <div className="flex items-center gap-2 text-xs">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void loadElections(undefined, electionsPage - 1)}
+            disabled={!hasPrevElections}
+          >
+            Prev
+          </Button>
+          <span>
+            Page {electionsPagination.page} / {Math.max(1, electionsPagination.total_pages)}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void loadElections(undefined, electionsPage + 1)}
+            disabled={!hasNextElections}
+          >
+            Next
+          </Button>
+        </div>
         <div className="space-y-2">
           {filteredElections.length === 0 ? (
             <p className="text-sm text-slate-600">No elections found.</p>
@@ -536,7 +585,11 @@ export default function AdminElectionPage() {
                 key={item.id}
                 type="button"
                 className="w-full rounded border border-border p-3 text-left text-sm hover:bg-muted"
-                onClick={() => setElectionId(item.id)}
+                onClick={() => {
+                  setElectionId(item.id);
+                  setCandidatesPage(1);
+                  setVotersPage(1);
+                }}
               >
                 <p className="font-medium">{item.title}</p>
                 <p className="text-xs text-slate-600">
@@ -561,7 +614,7 @@ export default function AdminElectionPage() {
               placeholder="Paste election UUID"
             />
           </div>
-          <Button onClick={loadElectionData} disabled={!canManage}>
+          <Button onClick={() => void loadElectionData()} disabled={!canManage}>
             Load
           </Button>
           <Button variant="outline" onClick={onPublish} disabled={!canManage || status !== "draft"}>
@@ -725,6 +778,29 @@ export default function AdminElectionPage() {
                 </div>
               ))}
             </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadElectionData(candidatesPage - 1, votersPage)}
+                disabled={!hasPrevCandidates || !canManage}
+              >
+                Prev
+              </Button>
+              <span>
+                Page {candidatesPagination.page} / {Math.max(1, candidatesPagination.total_pages)}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadElectionData(candidatesPage + 1, votersPage)}
+                disabled={!hasNextCandidates || !canManage}
+              >
+                Next
+              </Button>
+            </div>
           </Card>
 
           <Card className="space-y-3">
@@ -755,6 +831,29 @@ export default function AdminElectionPage() {
                   </Button>
                 </div>
               ))}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadElectionData(candidatesPage, votersPage - 1)}
+                disabled={!hasPrevVoters || !canManage}
+              >
+                Prev
+              </Button>
+              <span>
+                Page {votersPagination.page} / {Math.max(1, votersPagination.total_pages)}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadElectionData(candidatesPage, votersPage + 1)}
+                disabled={!hasNextVoters || !canManage}
+              >
+                Next
+              </Button>
             </div>
 
             <div className="space-y-2 rounded border border-border p-3">

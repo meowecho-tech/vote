@@ -45,15 +45,24 @@ export type ElectionSummary = {
   voter_count: number;
 };
 
+export type PaginationMeta = {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+};
+
 export type ElectionListResponse = {
   data: {
     elections: ElectionSummary[];
+    pagination: PaginationMeta;
   };
 };
 
 export type CandidateListResponse = {
   data: {
     candidates: Candidate[];
+    pagination: PaginationMeta;
   };
 };
 
@@ -66,6 +75,7 @@ export type VoterRollEntry = {
 export type VoterRollResponse = {
   data: {
     voters: VoterRollEntry[];
+    pagination: PaginationMeta;
   };
 };
 
