@@ -1,0 +1,31 @@
+# General
+.DS_Store
+.env
+.env.*
+*.log
+*.pid
+*.seed
+*.stackdump
+
+# Keep example env files versioned
+!.env.example
+
+# Node
+**/node_modules/
+**/.next/
+**/out/
+**/coverage/
+.turbo/
+
+# Rust
+**/target/
+
+# SQLx
+.sqlx/
+
+# IDE
+.vscode/
+.idea/
+
+# Deployment/build artifacts
+.vercel/
