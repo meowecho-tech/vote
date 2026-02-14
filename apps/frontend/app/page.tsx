@@ -6,17 +6,17 @@ import { ArrowRight, Landmark, ShieldCheck, Vote } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { clearAuthTokens, getStoredAccessToken } from "@/lib/auth";
 
 export default function HomePage() {
   const [isAuthed, setIsAuthed] = useState(false);
 
   useEffect(() => {
-    setIsAuthed(Boolean(localStorage.getItem("vote_access_token")));
+    setIsAuthed(Boolean(getStoredAccessToken()));
   }, []);
 
   function signOut() {
-    localStorage.removeItem("vote_access_token");
-    localStorage.removeItem("vote_refresh_token");
+    clearAuthTokens();
     sessionStorage.removeItem("vote_email");
     setIsAuthed(false);
   }

@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Ballot } from "@/components/voter/ballot";
 import { Card } from "@/components/ui/card";
 import { getBallot } from "@/lib/api";
+import { getStoredAccessToken } from "@/lib/auth";
 import type { BallotResponse } from "@/lib/types";
 
 export default function VoterElectionPage() {
@@ -20,7 +21,7 @@ export default function VoterElectionPage() {
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem("vote_access_token");
+      const token = getStoredAccessToken();
       if (!token) {
         router.replace("/login");
         return;

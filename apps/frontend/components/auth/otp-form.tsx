@@ -1,16 +1,18 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { verifyOtp } from "@/lib/api";
+import { persistAuthTokens, sanitizeNextPath } from "@/lib/auth";
 
 export function OtpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +28,9 @@ export function OtpForm() {
     setLoading(true);
     try {
       const result = await verifyOtp({ email, code });
-      localStorage.setItem("vote_access_token", result.data.access_token);
-      localStorage.setItem("vote_refresh_token", result.data.refresh_token);
-      router.push("/");
+      persistAuthTokens(result.data.access_token, result.data.refresh_token);
+      const next = sanitizeNextPath(searchParams.get("next"));
+      router.push(next ?? "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "verification failed");
     } finally {

@@ -6,6 +6,7 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getStoredAccessToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { castVote } from "@/lib/api";
 import type { Candidate } from "@/lib/types";
@@ -35,7 +36,7 @@ export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
     setSubmitting(true);
     setMessage(null);
     try {
-      const token = localStorage.getItem("vote_access_token");
+      const token = getStoredAccessToken();
       if (!token) {
         throw new Error("missing access token");
       }

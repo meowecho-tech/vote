@@ -27,7 +27,7 @@ import {
   updateElection,
   updateCandidate,
 } from "@/lib/api";
-import { getRoleFromAccessToken } from "@/lib/auth";
+import { getRoleFromAccessToken, getStoredAccessToken } from "@/lib/auth";
 import type {
   Candidate,
   ElectionSummary,
@@ -96,7 +96,7 @@ export default function AdminElectionPage() {
   );
 
   useEffect(() => {
-    const accessToken = localStorage.getItem("vote_access_token");
+    const accessToken = getStoredAccessToken();
     if (!accessToken) {
       router.replace("/login");
       return;

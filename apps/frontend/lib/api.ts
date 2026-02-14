@@ -9,6 +9,11 @@ import {
   VoterRollImportReport,
   VoterRollResponse,
 } from "@/lib/types";
+import {
+  clearAuthTokens,
+  getStoredRefreshToken,
+  persistAuthTokens,
+} from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
 
@@ -17,16 +22,8 @@ type AuthHeaders = {
   [key: string]: string | undefined;
 };
 
-function canUseBrowserStorage() {
-  return typeof window !== "undefined" && typeof localStorage !== "undefined";
-}
-
 async function tryRefreshAccessToken(): Promise<string | null> {
-  if (!canUseBrowserStorage()) {
-    return null;
-  }
-
-  const refreshToken = localStorage.getItem("vote_refresh_token");
+  const refreshToken = getStoredRefreshToken();
   if (!refreshToken) {
     return null;
   }
@@ -39,8 +36,7 @@ async function tryRefreshAccessToken(): Promise<string | null> {
   });
 
   if (!res.ok) {
-    localStorage.removeItem("vote_access_token");
-    localStorage.removeItem("vote_refresh_token");
+    clearAuthTokens();
     return null;
   }
 
@@ -49,8 +45,7 @@ async function tryRefreshAccessToken(): Promise<string | null> {
     return null;
   }
 
-  localStorage.setItem("vote_access_token", data.data.access_token);
-  localStorage.setItem("vote_refresh_token", data.data.refresh_token);
+  persistAuthTokens(data.data.access_token, data.data.refresh_token);
   return data.data.access_token;
 }
 

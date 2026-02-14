@@ -1,16 +1,18 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/lib/api";
+import { sanitizeNextPath } from "@/lib/auth";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,9 @@ export function LoginForm() {
     try {
       await login({ email, password });
       sessionStorage.setItem("vote_email", email);
-      router.push("/verify-otp");
+      const next = sanitizeNextPath(searchParams.get("next"));
+      const verifyPath = next ? `/verify-otp?next=${encodeURIComponent(next)}` : "/verify-otp";
+      router.push(verifyPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "login failed");
     } finally {
