@@ -30,6 +30,7 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
   const submitted = useMemo(() => message?.toLowerCase().startsWith("submitted successfully"), [message]);
   const disabled = useMemo(() => selected.length === 0 || submitting, [selected, submitting]);
   const selectionLimit = useMemo(() => Math.max(1, Number(maxSelections) || 1), [maxSelections]);
+  const showElectionTitle = useMemo(() => contestTitle.trim() !== electionTitle.trim(), [contestTitle, electionTitle]);
 
   function toggle(candidateId: string) {
     setSelected((prev) => {
@@ -89,10 +90,12 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
         <p className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
           Ballot
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">{contestTitle}</h2>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/60">
-          {electionTitle}
-        </p>
+        <h2 className="text-2xl font-semibold tracking-tight">
+          {showElectionTitle ? contestTitle : electionTitle}
+        </h2>
+        {showElectionTitle ? (
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/60">{electionTitle}</p>
+        ) : null}
         <p className="text-sm text-foreground/70">
           Select up to <strong>{selectionLimit}</strong> candidate{selectionLimit === 1 ? "" : "s"}, review your choice,
           then submit the vote.

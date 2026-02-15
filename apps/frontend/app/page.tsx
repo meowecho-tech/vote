@@ -261,7 +261,9 @@ export default function HomePage() {
                     >
                       <div className="flex flex-col gap-1">
                         <p className="font-semibold">{contest.title}</p>
-                        <p className="text-xs text-foreground/65">{contest.election.title}</p>
+                        {contest.title !== contest.election.title ? (
+                          <p className="text-xs text-foreground/65">{contest.election.title}</p>
+                        ) : null}
                         <p className="text-xs text-foreground/60">{contest.id}</p>
                         <p className="text-xs text-foreground/70">{buildVoterContestHint(contest)}</p>
                         <p className="text-xs text-foreground/60">
