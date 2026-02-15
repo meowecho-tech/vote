@@ -10,10 +10,12 @@ pub async fn create(pool: &PgPool, input: CreateElectionRequest) -> Result<Uuid,
         ));
     }
 
+    let mut tx = pool.begin().await.map_err(|_| AppError::Internal)?;
+
     let org_exists =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM organizations WHERE id = $1")
             .bind(input.organization_id)
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(|_| AppError::Internal)?;
 
@@ -32,13 +34,31 @@ pub async fn create(pool: &PgPool, input: CreateElectionRequest) -> Result<Uuid,
     )
     .bind(election_id)
     .bind(input.organization_id)
-    .bind(input.title)
-    .bind(input.description)
+    .bind(input.title.clone())
+    .bind(input.description.clone())
     .bind(input.opens_at)
     .bind(input.closes_at)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| AppError::BadRequest("invalid election payload".to_string()))?;
+
+    // Backward-compatible default contest so existing "one election = one ballot" flow still works.
+    let contest_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO contests (id, election_id, title, description, max_selections, is_default)
+        VALUES ($1, $2, $3, $4, 1, true)
+        "#,
+    )
+    .bind(contest_id)
+    .bind(election_id)
+    .bind(input.title)
+    .bind(input.description)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| AppError::Internal)?;
+
+    tx.commit().await.map_err(|_| AppError::Internal)?;
 
     Ok(election_id)
 }

@@ -7,6 +7,7 @@ export type Candidate = {
 export type BallotResponse = {
   data: {
     election_id: string;
+    contest_id: string;
     title: string;
     status: string;
     candidates: Candidate[];
@@ -17,6 +18,7 @@ export type VoteReceipt = {
   data: {
     receipt_id: string;
     election_id: string;
+    contest_id: string;
     submitted_at: string;
   };
 };
@@ -74,6 +76,69 @@ export type VotableElectionSummary = {
 export type VotableElectionListResponse = {
   data: {
     elections: VotableElectionSummary[];
+  };
+};
+
+export type VotableContestSummary = {
+  id: string;
+  title: string;
+  description?: string | null;
+  max_selections: number;
+  metadata: unknown;
+  is_default: boolean;
+  candidate_count: number;
+  has_voted: boolean;
+  can_vote_now: boolean;
+  election: {
+    id: string;
+    title: string;
+    description?: string | null;
+    status: "draft" | "published" | "closed";
+    opens_at: string;
+    closes_at: string;
+  };
+};
+
+export type VotableContestListResponse = {
+  data: {
+    contests: VotableContestSummary[];
+  };
+};
+
+export type MyElectionContestsResponse = {
+  data: {
+    election: {
+      id: string;
+      title: string;
+      description?: string | null;
+      status: "draft" | "published" | "closed";
+      opens_at: string;
+      closes_at: string;
+    };
+    contests: Array<{
+      id: string;
+      title: string;
+      description?: string | null;
+      max_selections: number;
+      metadata: unknown;
+      is_default: boolean;
+      candidate_count: number;
+      has_voted: boolean;
+      can_vote_now: boolean;
+    }>;
+  };
+};
+
+export type ContestBallotResponse = {
+  data: {
+    contest_id: string;
+    election_id: string;
+    election_title: string;
+    election_description?: string | null;
+    contest_title: string;
+    status: string;
+    max_selections: number;
+    candidates: Candidate[];
   };
 };
 

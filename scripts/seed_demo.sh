@@ -32,13 +32,41 @@ INSERT INTO organizations(id, name) VALUES ('${ORG_ID}', 'Demo Organization') ON
 INSERT INTO elections(id, organization_id, title, description, opens_at, closes_at, status)
 VALUES ('${ELECTION_ID}', '${ORG_ID}', 'Student President Election', 'Demo election', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '1 day', 'draft')
 ON CONFLICT DO NOTHING;
-INSERT INTO candidates(id, election_id, name) VALUES ('${CANDIDATE_A}', '${ELECTION_ID}', 'Candidate A') ON CONFLICT DO NOTHING;
-INSERT INTO candidates(id, election_id, name) VALUES ('${CANDIDATE_B}', '${ELECTION_ID}', 'Candidate B') ON CONFLICT DO NOTHING;
-INSERT INTO voter_rolls(id, election_id, user_id) VALUES (uuid_generate_v4(), '${ELECTION_ID}', '${VOTER_ID}') ON CONFLICT DO NOTHING;
+INSERT INTO contests (id, election_id, title, description, max_selections, is_default)
+SELECT uuid_generate_v4(), '${ELECTION_ID}', 'Default Ballot', 'Demo contest', 1, true
+WHERE NOT EXISTS (
+  SELECT 1 FROM contests WHERE election_id='${ELECTION_ID}' AND is_default = true
+);
+INSERT INTO candidates(id, election_id, contest_id, name)
+VALUES (
+  '${CANDIDATE_A}',
+  '${ELECTION_ID}',
+  (SELECT id FROM contests WHERE election_id='${ELECTION_ID}' AND is_default = true LIMIT 1),
+  'Candidate A'
+)
+ON CONFLICT DO NOTHING;
+INSERT INTO candidates(id, election_id, contest_id, name)
+VALUES (
+  '${CANDIDATE_B}',
+  '${ELECTION_ID}',
+  (SELECT id FROM contests WHERE election_id='${ELECTION_ID}' AND is_default = true LIMIT 1),
+  'Candidate B'
+)
+ON CONFLICT DO NOTHING;
+INSERT INTO voter_rolls(id, election_id, contest_id, user_id)
+VALUES (
+  uuid_generate_v4(),
+  '${ELECTION_ID}',
+  (SELECT id FROM contests WHERE election_id='${ELECTION_ID}' AND is_default = true LIMIT 1),
+  '${VOTER_ID}'
+)
+ON CONFLICT DO NOTHING;
 SQL
 )
 
 docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 -c "$SQL" >/dev/null
+
+CONTEST_ID=$(docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -Atc "SELECT id FROM contests WHERE election_id='${ELECTION_ID}' AND is_default=true LIMIT 1;")
 
 echo "export DEMO_ADMIN_EMAIL='${ADMIN_EMAIL}'"
 echo "export DEMO_VOTER_EMAIL='${VOTER_EMAIL}'"
@@ -47,4 +75,5 @@ echo "export DEMO_ADMIN_ID='${ADMIN_ID}'"
 echo "export DEMO_VOTER_ID='${VOTER_ID}'"
 echo "export DEMO_ORG_ID='${ORG_ID}'"
 echo "export DEMO_ELECTION_ID='${ELECTION_ID}'"
+echo "export DEMO_CONTEST_ID='${CONTEST_ID}'"
 echo "export DEMO_CANDIDATE_ID='${CANDIDATE_A}'"

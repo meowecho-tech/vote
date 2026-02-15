@@ -36,10 +36,17 @@ cargo run
 - `GET /api/v1/elections/{id}/ballot` (voter/admin)
 - `POST /api/v1/elections/{id}/vote` (voter/admin)
 - `GET /api/v1/elections/{id}/receipt/{receipt_id}` (voter/admin)
+- `GET /api/v1/me/contests/votable` (voter/admin)
+- `GET /api/v1/elections/{id}/contests/my` (voter/admin)
+- `GET /api/v1/contests/{id}/ballot` (voter/admin)
+- `POST /api/v1/contests/{id}/vote` (voter/admin)
+- `GET /api/v1/contests/{id}/receipt/{receipt_id}` (voter/admin)
 - `GET /api/v1/elections/{id}/results` (admin/election officer/auditor, only after close)
 
 ## Migration
 
 ```bash
-docker exec -i vote-postgres psql -U vote -d vote < migrations/0001_init.sql
+for file in migrations/*.sql; do
+  docker exec -i vote-postgres psql -U vote -d vote < "$file"
+done
 ```

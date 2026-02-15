@@ -11,29 +11,44 @@ import { useToast } from "@/components/ui/toast";
 import { getStoredAccessToken } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error";
 import { cn } from "@/lib/utils";
-import { castVote } from "@/lib/api";
+import { castContestVote } from "@/lib/api";
 import type { Candidate } from "@/lib/types";
 
 type BallotProps = {
-  electionId: string;
   electionTitle: string;
+  contestId: string;
+  contestTitle: string;
+  maxSelections: number;
   candidates: Candidate[];
 };
 
-export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
+export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, candidates }: BallotProps) {
   const { success, error: notifyError } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const submitted = useMemo(() => message?.toLowerCase().startsWith("submitted successfully"), [message]);
   const disabled = useMemo(() => selected.length === 0 || submitting, [selected, submitting]);
+  const selectionLimit = useMemo(() => Math.max(1, Number(maxSelections) || 1), [maxSelections]);
 
   function toggle(candidateId: string) {
-    setSelected((prev) =>
-      prev.includes(candidateId)
-        ? prev.filter((id) => id !== candidateId)
-        : [...prev, candidateId]
-    );
+    setSelected((prev) => {
+      const alreadySelected = prev.includes(candidateId);
+      if (alreadySelected) {
+        return prev.filter((id) => id !== candidateId);
+      }
+
+      if (selectionLimit === 1) {
+        return [candidateId];
+      }
+
+      if (prev.length >= selectionLimit) {
+        notifyError("Selection limit reached", `You can select up to ${selectionLimit} candidates.`);
+        return prev;
+      }
+
+      return [...prev, candidateId];
+    });
   }
 
   async function submitVote() {
@@ -46,7 +61,7 @@ export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
       }
 
       const idempotencyKey = crypto.randomUUID();
-      const response = await castVote(electionId, token, {
+      const response = await castContestVote(contestId, token, {
         idempotency_key: idempotencyKey,
         selections: selected.map((candidate_id) => ({ candidate_id })),
       });
@@ -74,14 +89,21 @@ export function Ballot({ electionId, electionTitle, candidates }: BallotProps) {
         <p className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
           Ballot
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">{electionTitle}</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">{contestTitle}</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/60">
+          {electionTitle}
+        </p>
         <p className="text-sm text-foreground/70">
-          Select candidate(s), review your choice, then submit the vote.
+          Select up to <strong>{selectionLimit}</strong> candidate{selectionLimit === 1 ? "" : "s"}, review your choice,
+          then submit the vote.
         </p>
       </div>
 
       <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 text-sm shadow-sm">
-        Selected candidates: <strong>{selected.length}</strong>
+        Selected candidates:{" "}
+        <strong>
+          {selected.length}/{selectionLimit}
+        </strong>
       </div>
 
       <div className="space-y-3">

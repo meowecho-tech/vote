@@ -16,6 +16,17 @@ use crate::{
     services::election,
 };
 
+async fn resolve_default_contest_id(pool: &PgPool, election_id: Uuid) -> Result<Uuid, AppError> {
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM contests WHERE election_id = $1 AND is_default = true LIMIT 1",
+    )
+    .bind(election_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AppError::Internal)?
+    .ok_or_else(|| AppError::NotFound("default contest not found".to_string()))
+}
+
 #[derive(Debug, Deserialize)]
 struct PaginationQuery {
     page: Option<i64>,
@@ -154,8 +165,9 @@ async fn list_elections(
           COUNT(DISTINCT c.id)::bigint AS candidate_count,
           COUNT(DISTINCT vr.user_id)::bigint AS voter_count
         FROM elections e
-        LEFT JOIN candidates c ON c.election_id = e.id
-        LEFT JOIN voter_rolls vr ON vr.election_id = e.id
+        LEFT JOIN contests dc ON dc.election_id = e.id AND dc.is_default = true
+        LEFT JOIN candidates c ON c.contest_id = dc.id
+        LEFT JOIN voter_rolls vr ON vr.contest_id = dc.id
         GROUP BY e.id, e.title, e.description, e.status, e.opens_at, e.closes_at
         ORDER BY e.created_at DESC
         LIMIT $1 OFFSET $2
@@ -243,16 +255,20 @@ async fn get_election(
     .map_err(|_| AppError::Internal)?
     .ok_or_else(|| AppError::NotFound("election not found".to_string()))?;
 
+    let default_contest_id = resolve_default_contest_id(pool.get_ref(), id).await?;
+
     let candidate_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM candidates WHERE election_id = $1")
-            .bind(id)
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM candidates WHERE contest_id = $1")
+            .bind(default_contest_id)
             .fetch_one(pool.get_ref())
             .await
             .map_err(|_| AppError::Internal)?;
 
     let voter_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM voter_rolls WHERE election_id = $1")
-            .bind(id)
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(DISTINCT user_id) FROM voter_rolls WHERE contest_id = $1",
+        )
+            .bind(default_contest_id)
             .fetch_one(pool.get_ref())
             .await
             .map_err(|_| AppError::Internal)?;
@@ -435,18 +451,19 @@ async fn list_candidates(
     )?;
 
     let election_id = path.into_inner();
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
     let (page, per_page, offset) = normalize_pagination(&query, 100);
     let total =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM candidates WHERE election_id = $1")
-            .bind(election_id)
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM candidates WHERE contest_id = $1")
+            .bind(contest_id)
             .fetch_one(pool.get_ref())
             .await
             .map_err(|_| AppError::Internal)?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, Option<String>)>(
-        "SELECT id, name, manifesto FROM candidates WHERE election_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
+        "SELECT id, name, manifesto FROM candidates WHERE contest_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
     )
-    .bind(election_id)
+    .bind(contest_id)
     .bind(per_page)
     .bind(offset)
     .fetch_all(pool.get_ref())
@@ -483,16 +500,18 @@ async fn create_candidate(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let election_id = path.into_inner();
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
     let candidate_id = Uuid::new_v4();
 
     sqlx::query(
         r#"
-        INSERT INTO candidates (id, election_id, name, manifesto)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO candidates (id, election_id, contest_id, name, manifesto)
+        VALUES ($1, $2, $3, $4, $5)
         "#,
     )
     .bind(candidate_id)
     .bind(election_id)
+    .bind(contest_id)
     .bind(body.name.trim())
     .bind(body.manifesto.clone())
     .execute(pool.get_ref())
@@ -514,6 +533,7 @@ async fn update_candidate(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let (election_id, candidate_id) = path.into_inner();
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
     let name = body.name.trim();
     if name.is_empty() {
         return Err(AppError::BadRequest(
@@ -525,13 +545,14 @@ async fn update_candidate(
         r#"
         UPDATE candidates
         SET name = $1, manifesto = $2
-        WHERE id = $3 AND election_id = $4
+        WHERE id = $3 AND election_id = $4 AND contest_id = $5
         "#,
     )
     .bind(name)
     .bind(body.manifesto.clone())
     .bind(candidate_id)
     .bind(election_id)
+    .bind(contest_id)
     .execute(pool.get_ref())
     .await
     .map_err(|_| AppError::Internal)?
@@ -553,9 +574,13 @@ async fn delete_candidate(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let (election_id, candidate_id) = path.into_inner();
-    let affected = sqlx::query("DELETE FROM candidates WHERE id = $1 AND election_id = $2")
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
+    let affected = sqlx::query(
+        "DELETE FROM candidates WHERE id = $1 AND election_id = $2 AND contest_id = $3",
+    )
         .bind(candidate_id)
         .bind(election_id)
+        .bind(contest_id)
         .execute(pool.get_ref())
         .await
         .map_err(|_| AppError::Internal)?
@@ -578,10 +603,11 @@ async fn list_voter_rolls(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let election_id = path.into_inner();
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
     let (page, per_page, offset) = normalize_pagination(&query, 100);
     let total =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM voter_rolls WHERE election_id = $1")
-            .bind(election_id)
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM voter_rolls WHERE contest_id = $1")
+            .bind(contest_id)
             .fetch_one(pool.get_ref())
             .await
             .map_err(|_| AppError::Internal)?;
@@ -591,12 +617,12 @@ async fn list_voter_rolls(
         SELECT u.id, u.email, u.full_name
         FROM voter_rolls vr
         JOIN users u ON u.id = vr.user_id
-        WHERE vr.election_id = $1
+        WHERE vr.contest_id = $1
         ORDER BY u.email ASC
         LIMIT $2 OFFSET $3
         "#,
     )
-    .bind(election_id)
+    .bind(contest_id)
     .bind(per_page)
     .bind(offset)
     .fetch_all(pool.get_ref())
@@ -633,17 +659,19 @@ async fn add_voter_roll(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let election_id = path.into_inner();
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
     let row_id = Uuid::new_v4();
 
     sqlx::query(
         r#"
-        INSERT INTO voter_rolls (id, election_id, user_id)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (election_id, user_id) DO NOTHING
+        INSERT INTO voter_rolls (id, election_id, contest_id, user_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (contest_id, user_id) DO NOTHING
         "#,
     )
     .bind(row_id)
     .bind(election_id)
+    .bind(contest_id)
     .bind(body.user_id)
     .execute(pool.get_ref())
     .await
@@ -662,6 +690,7 @@ async fn import_voter_rolls(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let election_id = path.into_inner();
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
     let dry_run = body.dry_run.unwrap_or(true);
     let parsed = parse_import_identifiers(&body.format, &body.data)?;
 
@@ -691,9 +720,9 @@ async fn import_voter_rolls(
         }
 
         let exists_in_roll = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM voter_rolls WHERE election_id = $1 AND user_id = $2",
+            "SELECT COUNT(*) FROM voter_rolls WHERE contest_id = $1 AND user_id = $2",
         )
-        .bind(election_id)
+        .bind(contest_id)
         .bind(user_id)
         .fetch_one(pool.get_ref())
         .await
@@ -715,13 +744,14 @@ async fn import_voter_rolls(
         for user_id in &valid_user_ids {
             let affected = sqlx::query(
                 r#"
-                INSERT INTO voter_rolls (id, election_id, user_id)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (election_id, user_id) DO NOTHING
+                INSERT INTO voter_rolls (id, election_id, contest_id, user_id)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (contest_id, user_id) DO NOTHING
                 "#,
             )
             .bind(Uuid::new_v4())
             .bind(election_id)
+            .bind(contest_id)
             .bind(user_id)
             .execute(pool.get_ref())
             .await
@@ -755,8 +785,9 @@ async fn remove_voter_roll(
     require_roles(&auth, &[UserRole::Admin, UserRole::ElectionOfficer])?;
 
     let (election_id, user_id) = path.into_inner();
-    sqlx::query("DELETE FROM voter_rolls WHERE election_id = $1 AND user_id = $2")
-        .bind(election_id)
+    let contest_id = resolve_default_contest_id(pool.get_ref(), election_id).await?;
+    sqlx::query("DELETE FROM voter_rolls WHERE contest_id = $1 AND user_id = $2")
+        .bind(contest_id)
         .bind(user_id)
         .execute(pool.get_ref())
         .await

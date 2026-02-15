@@ -14,7 +14,10 @@ PG_DB="${PG_DB:-vote}"
 cp -n infra/.env.example infra/.env >/dev/null 2>&1 || true
 docker compose -f infra/docker-compose.yml --env-file infra/.env up -d >/dev/null
 
-docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" < apps/backend/migrations/0001_init.sql >/dev/null
+mapfile -t MIGRATIONS < <(find apps/backend/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+for file in "${MIGRATIONS[@]}"; do
+  docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" < "$file" >/dev/null
+done
 
 (
   cd apps/backend

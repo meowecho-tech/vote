@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ShieldCheck, Vote } from "lucide-react";
 
-import { listMyVotableElections } from "@/lib/api";
+import { listMyVotableContests } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -17,7 +17,7 @@ import {
   type UserRole,
 } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error";
-import type { VotableElectionSummary } from "@/lib/types";
+import type { VotableContestSummary } from "@/lib/types";
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -28,25 +28,25 @@ function formatDateTime(value: string) {
   return date.toLocaleString();
 }
 
-function buildVoterElectionHint(election: VotableElectionSummary) {
-  if (election.has_voted) {
-    return "You already voted in this election.";
+function buildVoterContestHint(contest: VotableContestSummary) {
+  if (contest.has_voted) {
+    return "You already voted in this ballot.";
   }
 
-  if (election.can_vote_now) {
+  if (contest.can_vote_now) {
     return "Ready to vote now.";
   }
 
-  if (election.status !== "published") {
-    return `Election status: ${election.status}`;
+  if (contest.election.status !== "published") {
+    return `Election status: ${contest.election.status}`;
   }
 
   const now = Date.now();
-  const opensAt = new Date(election.opens_at).getTime();
-  const closesAt = new Date(election.closes_at).getTime();
+  const opensAt = new Date(contest.election.opens_at).getTime();
+  const closesAt = new Date(contest.election.closes_at).getTime();
 
   if (!Number.isNaN(opensAt) && now < opensAt) {
-    return `Voting opens at ${formatDateTime(election.opens_at)}`;
+    return `Voting opens at ${formatDateTime(contest.election.opens_at)}`;
   }
 
   if (!Number.isNaN(closesAt) && now > closesAt) {
@@ -61,9 +61,9 @@ export default function HomePage() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isAuthed, setIsAuthed] = useState(false);
   const [role, setRole] = useState<UserRole | null>(null);
-  const [voterElections, setVoterElections] = useState<VotableElectionSummary[]>([]);
-  const [isVoterElectionsLoading, setIsVoterElectionsLoading] = useState(false);
-  const [voterElectionsError, setVoterElectionsError] = useState<string | null>(null);
+  const [voterContests, setVoterContests] = useState<VotableContestSummary[]>([]);
+  const [isVoterContestsLoading, setIsVoterContestsLoading] = useState(false);
+  const [voterContestsError, setVoterContestsError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getStoredAccessToken();
@@ -81,39 +81,39 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!accessToken || role !== "voter") {
-      setVoterElections([]);
-      setVoterElectionsError(null);
-      setIsVoterElectionsLoading(false);
+      setVoterContests([]);
+      setVoterContestsError(null);
+      setIsVoterContestsLoading(false);
       return;
     }
 
     const currentAccessToken = accessToken;
     let active = true;
 
-    async function loadVoterElections() {
-      setIsVoterElectionsLoading(true);
-      setVoterElectionsError(null);
+    async function loadVoterContests() {
+      setIsVoterContestsLoading(true);
+      setVoterContestsError(null);
       try {
-        const response = await listMyVotableElections(currentAccessToken);
+        const response = await listMyVotableContests(currentAccessToken);
         if (!active) {
           return;
         }
-        setVoterElections(response.data.elections);
+        setVoterContests(response.data.contests);
       } catch (error) {
         if (!active) {
           return;
         }
-        const message = getErrorMessage(error, "failed to load your elections");
-        setVoterElectionsError(message);
-        toastError("Unable to load your elections", message);
+        const message = getErrorMessage(error, "failed to load your ballots");
+        setVoterContestsError(message);
+        toastError("Unable to load your ballots", message);
       } finally {
         if (active) {
-          setIsVoterElectionsLoading(false);
+          setIsVoterContestsLoading(false);
         }
       }
     }
 
-    void loadVoterElections();
+    void loadVoterContests();
 
     return () => {
       active = false;
@@ -126,29 +126,29 @@ export default function HomePage() {
     setAccessToken(null);
     setIsAuthed(false);
     setRole(null);
-    setVoterElections([]);
-    setVoterElectionsError(null);
+    setVoterContests([]);
+    setVoterContestsError(null);
   }
 
-  function reloadVoterElections() {
+  function reloadVoterContests() {
     if (!accessToken || role !== "voter") {
       return;
     }
 
     const currentAccessToken = accessToken;
-    setIsVoterElectionsLoading(true);
-    setVoterElectionsError(null);
-    void listMyVotableElections(currentAccessToken)
+    setIsVoterContestsLoading(true);
+    setVoterContestsError(null);
+    void listMyVotableContests(currentAccessToken)
       .then((response) => {
-        setVoterElections(response.data.elections);
+        setVoterContests(response.data.contests);
       })
       .catch((error) => {
-        const message = getErrorMessage(error, "failed to load your elections");
-        setVoterElectionsError(message);
-        toastError("Unable to load your elections", message);
+        const message = getErrorMessage(error, "failed to load your ballots");
+        setVoterContestsError(message);
+        toastError("Unable to load your ballots", message);
       })
       .finally(() => {
-        setIsVoterElectionsLoading(false);
+        setIsVoterContestsLoading(false);
       });
   }
 
@@ -156,8 +156,8 @@ export default function HomePage() {
   const isVoter = role === "voter";
   const roleLabel = role ? `Role: ${role}` : "Role: guest";
   const canVoteNowCount = useMemo(
-    () => voterElections.filter((item) => item.can_vote_now).length,
-    [voterElections]
+    () => voterContests.filter((item) => item.can_vote_now).length,
+    [voterContests]
   );
 
   return (
@@ -233,48 +233,50 @@ export default function HomePage() {
               </p>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={reloadVoterElections} disabled={isVoterElectionsLoading}>
-                  {isVoterElectionsLoading ? "Refreshing..." : "Refresh my elections"}
+                <Button variant="outline" size="sm" onClick={reloadVoterContests} disabled={isVoterContestsLoading}>
+                  {isVoterContestsLoading ? "Refreshing..." : "Refresh my ballots"}
                 </Button>
                 <span className="text-xs text-foreground/60">
                   Can vote now: <strong>{canVoteNowCount}</strong>
                 </span>
               </div>
 
-              {voterElectionsError ? (
-                <ErrorAlert title="Load elections failed" message={voterElectionsError} />
+              {voterContestsError ? (
+                <ErrorAlert title="Load ballots failed" message={voterContestsError} />
               ) : null}
 
               <div className="space-y-2">
-                {isVoterElectionsLoading ? (
+                {isVoterContestsLoading ? (
                   <>
                     <Skeleton className="h-20 w-full rounded-xl" />
                     <Skeleton className="h-20 w-full rounded-xl" />
                   </>
-                ) : voterElections.length === 0 ? (
-                  <p className="text-sm text-foreground/60">No elections assigned to your voter roll.</p>
+                ) : voterContests.length === 0 ? (
+                  <p className="text-sm text-foreground/60">No ballots assigned to your voter roll.</p>
                 ) : (
-                  voterElections.map((election) => (
+                  voterContests.map((contest) => (
                     <div
-                      key={election.id}
+                      key={contest.id}
                       className="rounded-xl border border-border/80 bg-card/70 p-3 text-sm"
                     >
                       <div className="flex flex-col gap-1">
-                        <p className="font-semibold">{election.title}</p>
-                        <p className="text-xs text-foreground/60">{election.id}</p>
-                        <p className="text-xs text-foreground/70">{buildVoterElectionHint(election)}</p>
+                        <p className="font-semibold">{contest.title}</p>
+                        <p className="text-xs text-foreground/65">{contest.election.title}</p>
+                        <p className="text-xs text-foreground/60">{contest.id}</p>
+                        <p className="text-xs text-foreground/70">{buildVoterContestHint(contest)}</p>
                         <p className="text-xs text-foreground/60">
-                          Opens: {formatDateTime(election.opens_at)} | Closes: {formatDateTime(election.closes_at)}
+                          Opens: {formatDateTime(contest.election.opens_at)} | Closes:{" "}
+                          {formatDateTime(contest.election.closes_at)}
                         </p>
                       </div>
                       <div className="mt-2">
-                        {election.can_vote_now ? (
-                          <Link href={`/voter/elections/${election.id}`}>
+                        {contest.can_vote_now ? (
+                          <Link href={`/voter/contests/${contest.id}`}>
                             <Button size="sm">Go to vote</Button>
                           </Link>
                         ) : (
                           <Button size="sm" variant="outline" disabled>
-                            {election.has_voted ? "Already voted" : "Unavailable"}
+                            {contest.has_voted ? "Already voted" : "Unavailable"}
                           </Button>
                         )}
                       </div>

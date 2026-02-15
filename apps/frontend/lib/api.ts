@@ -1,10 +1,13 @@
 import {
   BallotResponse,
   CandidateListResponse,
+  ContestBallotResponse,
   ElectionDetail,
   ElectionListResponse,
   ElectionResultsResponse,
+  MyElectionContestsResponse,
   OrganizationListResponse,
+  VotableContestListResponse,
   VotableElectionListResponse,
   VoteReceipt,
   VoterRollImportReport,
@@ -151,12 +154,33 @@ export async function getBallot(electionId: string, accessToken: string): Promis
   });
 }
 
+export async function getContestBallot(
+  contestId: string,
+  accessToken: string
+): Promise<ContestBallotResponse> {
+  return request<ContestBallotResponse>(`/contests/${contestId}/ballot`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
 export async function castVote(
   electionId: string,
   accessToken: string,
   payload: { idempotency_key: string; selections: { candidate_id: string }[] }
 ): Promise<VoteReceipt> {
   return request<VoteReceipt>(`/elections/${electionId}/vote`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function castContestVote(
+  contestId: string,
+  accessToken: string,
+  payload: { idempotency_key: string; selections: { candidate_id: string }[] }
+): Promise<VoteReceipt> {
+  return request<VoteReceipt>(`/contests/${contestId}/vote`, {
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify(payload),
@@ -235,6 +259,23 @@ export async function listMyVotableElections(
   accessToken: string
 ): Promise<VotableElectionListResponse> {
   return request<VotableElectionListResponse>("/me/elections/votable", {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listMyVotableContests(
+  accessToken: string
+): Promise<VotableContestListResponse> {
+  return request<VotableContestListResponse>("/me/contests/votable", {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listMyElectionContests(
+  electionId: string,
+  accessToken: string
+): Promise<MyElectionContestsResponse> {
+  return request<MyElectionContestsResponse>(`/elections/${electionId}/contests/my`, {
     headers: authHeaders(accessToken),
   });
 }

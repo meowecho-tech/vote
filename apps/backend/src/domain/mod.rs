@@ -123,6 +123,7 @@ pub struct CastVoteRequest {
 pub struct VoteReceiptResponse {
     pub receipt_id: Uuid,
     pub election_id: Uuid,
+    pub contest_id: Uuid,
     pub submitted_at: DateTime<Utc>,
 }
 

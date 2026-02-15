@@ -7,7 +7,9 @@ infra-down:
 	docker compose -f infra/docker-compose.yml --env-file infra/.env down
 
 migrate:
-	docker exec -i vote-postgres psql -U vote -d vote < apps/backend/migrations/0001_init.sql
+	for file in $$(ls -1 apps/backend/migrations/*.sql | sort); do \
+	  docker exec -i vote-postgres psql -U vote -d vote < $$file; \
+	done
 
 backend-run:
 	cd apps/backend && cargo run
