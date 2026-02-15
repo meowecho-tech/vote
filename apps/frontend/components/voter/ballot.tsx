@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,47 @@ type BallotProps = {
 export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, candidates }: BallotProps) {
   const { success, error: notifyError } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const submitted = useMemo(() => message?.toLowerCase().startsWith("submitted successfully"), [message]);
   const disabled = useMemo(() => selected.length === 0 || submitting, [selected, submitting]);
   const selectionLimit = useMemo(() => Math.max(1, Number(maxSelections) || 1), [maxSelections]);
   const showElectionTitle = useMemo(() => contestTitle.trim() !== electionTitle.trim(), [contestTitle, electionTitle]);
+  const selectedCandidates = useMemo(() => {
+    if (selected.length === 0) {
+      return [];
+    }
+    const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+    return selected.map((id) => byId.get(id)).filter((candidate): candidate is Candidate => Boolean(candidate));
+  }, [candidates, selected]);
+
+  useEffect(() => {
+    if (!confirmOpen) {
+      return;
+    }
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [confirmOpen]);
+
+  useEffect(() => {
+    if (!confirmOpen) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !submitting) {
+        setConfirmOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmOpen, submitting]);
 
   function toggle(candidateId: string) {
     setSelected((prev) => {
@@ -52,7 +87,7 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
     });
   }
 
-  async function submitVote() {
+  async function submitVote(): Promise<boolean> {
     setSubmitting(true);
     setMessage(null);
     try {
@@ -71,10 +106,12 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
       setMessage(successMessage);
       success("Vote submitted", `Receipt: ${response.data.receipt_id}`);
       setSelected([]);
+      return true;
     } catch (error) {
       const message = getErrorMessage(error, "vote failed");
       setMessage(message);
       notifyError("Vote submission failed", message);
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -135,13 +172,104 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={submitVote} disabled={disabled}>
+        <Button
+          onClick={() => {
+            if (disabled) return;
+            setMessage(null);
+            setConfirmOpen(true);
+          }}
+          disabled={disabled}
+        >
           {submitting ? "Submitting..." : "Submit Vote"}
         </Button>
         <Button variant="outline" onClick={clearSelection} disabled={selected.length === 0 || submitting}>
           Clear selection
         </Button>
       </div>
+
+      {confirmOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-vote-title"
+          onClick={() => {
+            if (!submitting) {
+              setConfirmOpen(false);
+            }
+          }}
+        >
+          <Card
+            className="w-full max-w-lg space-y-4 hover:shadow-[0_24px_55px_-38px_rgba(15,23,42,0.65)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/60">Confirm</p>
+              <h3 id="confirm-vote-title" className="text-xl font-semibold tracking-tight">
+                Confirm your vote
+              </h3>
+              <p className="text-sm text-foreground/70">
+                Please review your selection. After submitting, you may not be able to change your vote.
+              </p>
+            </div>
+
+            <div className="space-y-1 rounded-xl border border-border/70 bg-card/70 p-3 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/60">Ballot</p>
+              <p className="font-semibold">{contestTitle}</p>
+              {showElectionTitle ? <p className="text-xs text-foreground/65">{electionTitle}</p> : null}
+              <p className="text-xs text-foreground/60">contest_id: {contestId}</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold">
+                Selected candidates{" "}
+                <span className="text-foreground/60">
+                  ({selectedCandidates.length}/{selectionLimit})
+                </span>
+              </p>
+              {selectedCandidates.length === 0 ? (
+                <p className="text-sm text-foreground/60">No candidates selected.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {selectedCandidates.map((candidate) => (
+                    <li key={candidate.id} className="rounded-xl border border-border/70 bg-card/70 p-3 text-sm">
+                      <p className="font-semibold">{candidate.name}</p>
+                      {candidate.manifesto ? (
+                        <p className="mt-0.5 text-xs text-foreground/65">{candidate.manifesto}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {message && !submitted ? (
+              <ErrorAlert title="Vote submission failed" message={message} />
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={submitting}
+              >
+                Back
+              </Button>
+              <Button
+                onClick={async () => {
+                  const ok = await submitVote();
+                  if (ok) {
+                    setConfirmOpen(false);
+                  }
+                }}
+                disabled={disabled || selectedCandidates.length === 0}
+              >
+                {submitting ? "Submitting..." : "Confirm & Submit"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
 
       {message ? (
         submitted ? (
