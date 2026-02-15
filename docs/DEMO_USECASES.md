@@ -29,7 +29,12 @@ cargo run
 Terminal 3 (seed scenarios):
 
 ```bash
-eval "$(bash scripts/seed_scenarios.sh)"
+# Seed both scenarios (student + national):
+eval "$(make -s seed-scenarios)"
+
+# Or seed just one scenario:
+# eval "$(make -s seed-student)"
+# eval "$(make -s seed-national)"
 ```
 
 Frontend:
@@ -118,4 +123,3 @@ Usecase steps (admin management):
 6) Publish election and monitor.
 7) Close election.
 8) Load results per contest.
-

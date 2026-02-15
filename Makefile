@@ -1,5 +1,5 @@
 .PHONY: infra-up infra-down migrate backend-run frontend-dev seed test-integration test-frontend-smoke test-backend
-.PHONY: db-reset seed-scenarios
+.PHONY: db-reset seed-scenarios seed-student seed-national
 
 infra-up:
 	docker compose -f infra/docker-compose.yml --env-file infra/.env up -d
@@ -19,13 +19,19 @@ frontend-dev:
 	cd apps/frontend && bun run dev
 
 seed:
-	bash scripts/seed_demo.sh
+	@bash scripts/seed_scenarios.sh --scenario both
 
 db-reset:
 	CONFIRM=yes bash scripts/db_reset.sh
 
 seed-scenarios:
-	bash scripts/seed_scenarios.sh
+	@bash scripts/seed_scenarios.sh --scenario both
+
+seed-student:
+	@bash scripts/seed_scenarios.sh --scenario student
+
+seed-national:
+	@bash scripts/seed_scenarios.sh --scenario national
 
 test-backend:
 	cd apps/backend && cargo test

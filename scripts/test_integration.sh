@@ -43,7 +43,7 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-eval "$(bash scripts/seed_demo.sh)"
+eval "$(bash scripts/seed_scenarios.sh --scenario student --status draft)"
 
 get_tokens() {
   local email="$1"
@@ -61,41 +61,41 @@ get_tokens() {
 ADMIN_TOKENS=$(get_tokens "$DEMO_ADMIN_EMAIL")
 ADMIN_ACCESS=$(echo "$ADMIN_TOKENS" | jq -r '.data.access_token')
 
-VOTER_TOKENS=$(get_tokens "$DEMO_VOTER_EMAIL")
+VOTER_TOKENS=$(get_tokens "$DEMO_STUDENT_VOTER_EMAIL")
 VOTER_ACCESS=$(echo "$VOTER_TOKENS" | jq -r '.data.access_token')
 
-VOTER_PUBLISH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "${API_BASE}/elections/${DEMO_ELECTION_ID}/publish" \
+VOTER_PUBLISH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/publish" \
   -H "authorization: Bearer ${VOTER_ACCESS}")
 [ "$VOTER_PUBLISH_STATUS" = "403" ]
 
-curl -sS -X PATCH "${API_BASE}/elections/${DEMO_ELECTION_ID}/publish" \
+curl -sS -X PATCH "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/publish" \
   -H "authorization: Bearer ${ADMIN_ACCESS}" >/dev/null
 
-PRE_RESULT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${API_BASE}/elections/${DEMO_ELECTION_ID}/results" \
+PRE_RESULT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/results" \
   -H "authorization: Bearer ${ADMIN_ACCESS}")
 [ "$PRE_RESULT_STATUS" = "403" ]
 
 IDEMPOTENCY_KEY=$(uuidgen | tr '[:upper:]' '[:lower:]')
-VOTE_1=$(curl -sS -X POST "${API_BASE}/elections/${DEMO_ELECTION_ID}/vote" \
+VOTE_1=$(curl -sS -X POST "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/vote" \
   -H 'content-type: application/json' -H "authorization: Bearer ${VOTER_ACCESS}" \
-  -d "{\"idempotency_key\":\"${IDEMPOTENCY_KEY}\",\"selections\":[{\"candidate_id\":\"${DEMO_CANDIDATE_ID}\"}]}")
+  -d "{\"idempotency_key\":\"${IDEMPOTENCY_KEY}\",\"selections\":[{\"candidate_id\":\"${DEMO_STUDENT_CANDIDATE_A_ID}\"}]}")
 RECEIPT_1=$(echo "$VOTE_1" | jq -r '.data.receipt_id')
 
-VOTE_2=$(curl -sS -X POST "${API_BASE}/elections/${DEMO_ELECTION_ID}/vote" \
+VOTE_2=$(curl -sS -X POST "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/vote" \
   -H 'content-type: application/json' -H "authorization: Bearer ${VOTER_ACCESS}" \
-  -d "{\"idempotency_key\":\"${IDEMPOTENCY_KEY}\",\"selections\":[{\"candidate_id\":\"${DEMO_CANDIDATE_ID}\"}]}")
+  -d "{\"idempotency_key\":\"${IDEMPOTENCY_KEY}\",\"selections\":[{\"candidate_id\":\"${DEMO_STUDENT_CANDIDATE_A_ID}\"}]}")
 RECEIPT_2=$(echo "$VOTE_2" | jq -r '.data.receipt_id')
 [ "$RECEIPT_1" = "$RECEIPT_2" ]
 
-SECOND_VOTE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/elections/${DEMO_ELECTION_ID}/vote" \
+SECOND_VOTE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/vote" \
   -H 'content-type: application/json' -H "authorization: Bearer ${VOTER_ACCESS}" \
-  -d "{\"idempotency_key\":\"$(uuidgen | tr '[:upper:]' '[:lower:]')\",\"selections\":[{\"candidate_id\":\"${DEMO_CANDIDATE_ID}\"}]}")
+  -d "{\"idempotency_key\":\"$(uuidgen | tr '[:upper:]' '[:lower:]')\",\"selections\":[{\"candidate_id\":\"${DEMO_STUDENT_CANDIDATE_A_ID}\"}]}")
 [ "$SECOND_VOTE_STATUS" = "409" ]
 
-curl -sS -X PATCH "${API_BASE}/elections/${DEMO_ELECTION_ID}/close" \
+curl -sS -X PATCH "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/close" \
   -H "authorization: Bearer ${ADMIN_ACCESS}" >/dev/null
 
-RESULTS=$(curl -sS "${API_BASE}/elections/${DEMO_ELECTION_ID}/results" -H "authorization: Bearer ${ADMIN_ACCESS}")
+RESULTS=$(curl -sS "${API_BASE}/elections/${DEMO_STUDENT_ELECTION_ID}/results" -H "authorization: Bearer ${ADMIN_ACCESS}")
 COUNT=$(echo "$RESULTS" | jq -r '.data.results | length')
 [ "$COUNT" -gt 0 ]
 
