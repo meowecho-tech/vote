@@ -97,6 +97,22 @@ pub struct UpdateCandidateRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CreateContestRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub max_selections: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateContestRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub max_selections: i32,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AddVoterRollRequest {
     pub user_id: Uuid,
 }

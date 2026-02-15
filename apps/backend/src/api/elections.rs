@@ -1,11 +1,14 @@
 use std::collections::HashSet;
 
 use actix_web::{delete, get, patch, post, web, HttpResponse};
-use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
+    api::{
+        pagination::{normalize_pagination, total_pages, PaginationQuery},
+        voter_roll_import::{parse_import_identifiers, resolve_user_by_identifier},
+    },
     domain::{
         AddVoterRollRequest, CreateCandidateRequest, CreateElectionRequest,
         CreateOrganizationRequest, ImportVoterRollRequest, UpdateCandidateRequest,
@@ -25,27 +28,6 @@ async fn resolve_default_contest_id(pool: &PgPool, election_id: Uuid) -> Result<
     .await
     .map_err(|_| AppError::Internal)?
     .ok_or_else(|| AppError::NotFound("default contest not found".to_string()))
-}
-
-#[derive(Debug, Deserialize)]
-struct PaginationQuery {
-    page: Option<i64>,
-    per_page: Option<i64>,
-}
-
-fn normalize_pagination(query: &PaginationQuery, max_per_page: i64) -> (i64, i64, i64) {
-    let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(20).clamp(1, max_per_page);
-    let offset = (page - 1) * per_page;
-    (page, per_page, offset)
-}
-
-fn total_pages(total: i64, per_page: i64) -> i64 {
-    if total <= 0 {
-        0
-    } else {
-        (total + per_page - 1) / per_page
-    }
 }
 
 #[get("/organizations")]
@@ -814,93 +796,4 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(add_voter_roll)
         .service(import_voter_rolls)
         .service(remove_voter_roll);
-}
-
-fn parse_import_identifiers(format: &str, data: &str) -> Result<Vec<(usize, String)>, AppError> {
-    match format.to_lowercase().as_str() {
-        "json" => parse_json_identifiers(data),
-        "csv" => parse_csv_identifiers(data),
-        _ => Err(AppError::BadRequest(
-            "format must be either 'csv' or 'json'".to_string(),
-        )),
-    }
-}
-
-fn parse_json_identifiers(data: &str) -> Result<Vec<(usize, String)>, AppError> {
-    let values: Vec<String> = serde_json::from_str(data)
-        .map_err(|_| AppError::BadRequest("invalid json, expected string array".to_string()))?;
-
-    let rows: Vec<(usize, String)> = values
-        .into_iter()
-        .enumerate()
-        .filter_map(|(idx, value)| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                return None;
-            }
-            Some((idx + 1, trimmed))
-        })
-        .collect();
-
-    Ok(rows)
-}
-
-fn parse_csv_identifiers(data: &str) -> Result<Vec<(usize, String)>, AppError> {
-    let mut rows = Vec::new();
-
-    for (idx, line) in data.lines().enumerate() {
-        let line_no = idx + 1;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let first_col = trimmed
-            .split(',')
-            .next()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
-
-        if line_no == 1 {
-            let header = first_col.to_lowercase();
-            if header == "user_id" || header == "email" || header == "identifier" {
-                continue;
-            }
-        }
-
-        if first_col.is_empty() {
-            return Err(AppError::BadRequest(format!(
-                "invalid csv row {}: missing identifier",
-                line_no
-            )));
-        }
-
-        rows.push((line_no, first_col));
-    }
-
-    Ok(rows)
-}
-
-async fn resolve_user_by_identifier(
-    pool: &PgPool,
-    identifier: &str,
-) -> Result<Option<Uuid>, AppError> {
-    if let Ok(user_id) = Uuid::parse_str(identifier) {
-        let found = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| AppError::Internal)?;
-        return Ok(found);
-    }
-
-    let found =
-        sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE lower(email) = lower($1)")
-            .bind(identifier)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| AppError::Internal)?;
-
-    Ok(found)
 }
