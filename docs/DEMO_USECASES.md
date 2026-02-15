@@ -123,3 +123,38 @@ Usecase steps (admin management):
 6) Publish election and monitor.
 7) Close election.
 8) Load results per contest.
+
+## 5) Blueprint: Thailand-Scale Election (77 Provinces, Many Districts)
+
+This section describes how to model a real Thailand-style election in this system.
+
+Data model mapping:
+- `Organization`: the organizer (example: "Election Commission of Thailand")
+- `Election`: the national event (example: "General Election 256X")
+- `Contest`: **one district race** (example: "Bangkok - District 1")
+- `Candidate`: candidates **in that district**
+- `Voter Roll`: eligible voters **for that district**
+
+Recommended contest metadata:
+- Use `metadata` JSON to store structured fields for grouping and auditing, for example:
+  - `country`: `"TH"`
+  - `province`: `"Bangkok"`
+  - `district`: `1`
+  - optional: `province_code`, `district_code`, `seat_type`
+- Keep `title` human-friendly (what admins and voters see).
+- Use `max_selections = 1` for 1-seat districts. If a district has multiple seats, set `max_selections` to the seat count.
+
+Admin flow (high level):
+1) Create (or select) the organizer `Organization`.
+2) Create one `Election` (start as `draft`).
+3) Create one `Contest` per district (77 provinces x multiple districts).
+4) For each contest:
+   - Add candidates
+   - Import or add voter roll entries for voters in that district
+5) Publish the election (opens voting when within the time window).
+6) Close the election after voting ends.
+7) Load results **per contest** (district).
+
+Notes / practical tips:
+- Each election also has a "default contest" for backwards compatibility. For multi-district elections, you can leave it empty and avoid adding voter-roll entries to it.
+- Managing hundreds of contests manually in the UI is possible but slow. For real operations, consider automating contest creation and voter-roll imports using the admin REST API endpoints.
