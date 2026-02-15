@@ -12,28 +12,34 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import {
-  addVoterRoll,
+  addContestVoterRoll,
   closeElection,
-  createCandidate,
+  createContest,
+  createContestCandidate,
   createElection,
   createOrganization,
-  deleteCandidate,
+  deleteContest,
+  deleteContestCandidate,
   getElection,
-  getElectionResults,
-  listCandidates,
+  getContestResults,
+  listContestCandidates,
+  listContestVoterRolls,
   listElections,
+  listElectionContests,
   listOrganizations,
-  listVoterRolls,
   publishElection,
-  importVoterRolls,
-  removeVoterRoll,
+  importContestVoterRolls,
+  removeContestVoterRoll,
   updateElection,
-  updateCandidate,
+  updateContest,
+  updateContestCandidate,
 } from "@/lib/api";
 import { getRoleFromAccessToken, getStoredAccessToken } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error";
 import type {
   Candidate,
+  ContestAdminSummary,
+  ContestResultsResponse,
   ElectionSummary,
   Organization,
   PaginationMeta,
@@ -69,13 +75,27 @@ export default function AdminElectionPage() {
   const [electionSearch, setElectionSearch] = useState("");
   const [electionStatusFilter, setElectionStatusFilter] = useState<"all" | ElectionStatus>("all");
   const [status, setStatus] = useState<ElectionStatus | null>(null);
-  const [meta, setMeta] = useState<{ title: string; candidateCount: number; voterCount: number } | null>(
-    null
-  );
+  const [meta, setMeta] = useState<{
+    title: string;
+    contestCount: number;
+    candidateEntries: number;
+    voterEntries: number;
+  } | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editOpensAt, setEditOpensAt] = useState("");
   const [editClosesAt, setEditClosesAt] = useState("");
+
+  const [contests, setContests] = useState<ContestAdminSummary[]>([]);
+  const [selectedContestId, setSelectedContestId] = useState("");
+  const [newContestTitle, setNewContestTitle] = useState("");
+  const [newContestDescription, setNewContestDescription] = useState("");
+  const [newContestMaxSelections, setNewContestMaxSelections] = useState(1);
+  const [newContestMetadata, setNewContestMetadata] = useState("");
+  const [editContestTitle, setEditContestTitle] = useState("");
+  const [editContestDescription, setEditContestDescription] = useState("");
+  const [editContestMaxSelections, setEditContestMaxSelections] = useState(1);
+  const [editContestMetadata, setEditContestMetadata] = useState("");
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidatesPagination, setCandidatesPagination] = useState<PaginationMeta>(DEFAULT_PAGINATION);
@@ -94,7 +114,7 @@ export default function AdminElectionPage() {
   const [importPayload, setImportPayload] = useState("");
   const [importReport, setImportReport] = useState<VoterRollImportReport["data"] | null>(null);
 
-  const [results, setResults] = useState<{ name: string; total: number }[]>([]);
+  const [results, setResults] = useState<ContestResultsResponse["data"]["results"]>([]);
   const [message, setMessage] = useState<Feedback | null>(null);
   const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
   const [isOrganizationSubmitting, setIsOrganizationSubmitting] = useState(false);
@@ -103,6 +123,9 @@ export default function AdminElectionPage() {
   const [isElectionDataLoading, setIsElectionDataLoading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [isContestSubmitting, setIsContestSubmitting] = useState(false);
+  const [isContestSaving, setIsContestSaving] = useState(false);
+  const [isContestDeleting, setIsContestDeleting] = useState(false);
   const [isCandidateSubmitting, setIsCandidateSubmitting] = useState(false);
   const [isCandidateMutatingId, setIsCandidateMutatingId] = useState<string | null>(null);
   const [isVoterSubmitting, setIsVoterSubmitting] = useState(false);
@@ -116,6 +139,33 @@ export default function AdminElectionPage() {
     () => Boolean(token && electionId && authorized),
     [token, electionId, authorized]
   );
+
+  function resetElectionState(nextElectionId: string) {
+    setElectionId(nextElectionId);
+    setCandidatesPage(1);
+    setVotersPage(1);
+    setSelectedContestId("");
+    setStatus(null);
+    setMeta(null);
+    setEditTitle("");
+    setEditDescription("");
+    setEditOpensAt("");
+    setEditClosesAt("");
+    setEditContestTitle("");
+    setEditContestDescription("");
+    setEditContestMaxSelections(1);
+    setEditContestMetadata("");
+    setContests([]);
+    setCandidates([]);
+    setCandidatesPagination(DEFAULT_PAGINATION);
+    setEditingCandidateId(null);
+    setEditCandidateName("");
+    setEditCandidateManifesto("");
+    setVoters([]);
+    setVotersPagination(DEFAULT_PAGINATION);
+    setImportReport(null);
+    setResults([]);
+  }
 
   function clearGlobalMessage() {
     setMessage(null);
@@ -173,9 +223,7 @@ export default function AdminElectionPage() {
       return;
     }
 
-    setElectionId(electionIdFromQuery);
-    setCandidatesPage(1);
-    setVotersPage(1);
+    resetElectionState(electionIdFromQuery);
   }, [searchParams]);
 
   async function loadOrganizations(accessTokenOverride?: string) {
@@ -258,9 +306,7 @@ export default function AdminElectionPage() {
       });
 
       const createdId = res.data.election_id;
-      setElectionId(createdId);
-      setCandidatesPage(1);
-      setVotersPage(1);
+      resetElectionState(createdId);
       pushCreateSuccess(`Created election: ${createdId}`);
       await loadElections(undefined, 1);
     } catch (error) {
@@ -282,22 +328,66 @@ export default function AdminElectionPage() {
     try {
       const targetCandidatePage = candidatePageOverride ?? candidatesPage;
       const targetVoterPage = voterPageOverride ?? votersPage;
-      const [election, candidateList, voterList] = await Promise.all([
+      const [election, contestList] = await Promise.all([
         getElection(token, electionId),
-        listCandidates(token, electionId, { page: targetCandidatePage, per_page: 10 }),
-        listVoterRolls(token, electionId, { page: targetVoterPage, per_page: 10 }),
+        listElectionContests(token, electionId),
       ]);
 
       setStatus(election.data.status);
+      setResults([]);
+
+      const contestItems = contestList.data.contests;
+      setContests(contestItems);
+
+      const candidateEntries = contestItems.reduce((sum, item) => sum + item.candidate_count, 0);
+      const voterEntries = contestItems.reduce((sum, item) => sum + item.voter_count, 0);
+
       setMeta({
         title: election.data.title,
-        candidateCount: election.data.candidate_count,
-        voterCount: election.data.voter_count,
+        contestCount: contestItems.length,
+        candidateEntries,
+        voterEntries,
       });
       setEditTitle(election.data.title);
       setEditDescription(election.data.description ?? "");
       setEditOpensAt(new Date(election.data.opens_at).toISOString().slice(0, 16));
       setEditClosesAt(new Date(election.data.closes_at).toISOString().slice(0, 16));
+
+      const resolvedContestId = (() => {
+        if (selectedContestId && contestItems.some((item) => item.id === selectedContestId)) {
+          return selectedContestId;
+        }
+        return contestItems.find((item) => item.is_default)?.id ?? contestItems[0]?.id ?? "";
+      })();
+
+      setSelectedContestId(resolvedContestId);
+
+      const selectedContest = contestItems.find((item) => item.id === resolvedContestId) ?? null;
+      if (selectedContest) {
+        setEditContestTitle(selectedContest.title);
+        setEditContestDescription(selectedContest.description ?? "");
+        setEditContestMaxSelections(selectedContest.max_selections);
+        setEditContestMetadata(JSON.stringify(selectedContest.metadata ?? {}, null, 2));
+      } else {
+        setEditContestTitle("");
+        setEditContestDescription("");
+        setEditContestMaxSelections(1);
+        setEditContestMetadata("");
+      }
+
+      if (!resolvedContestId) {
+        setCandidates([]);
+        setCandidatesPagination(DEFAULT_PAGINATION);
+        setVoters([]);
+        setVotersPagination(DEFAULT_PAGINATION);
+        return;
+      }
+
+      const [candidateList, voterList] = await Promise.all([
+        listContestCandidates(token, resolvedContestId, { page: targetCandidatePage, per_page: 10 }),
+        listContestVoterRolls(token, resolvedContestId, { page: targetVoterPage, per_page: 10 }),
+      ]);
+
       setCandidates(candidateList.data.candidates);
       setCandidatesPagination(candidateList.data.pagination);
       setCandidatesPage(candidateList.data.pagination.page);
@@ -308,6 +398,229 @@ export default function AdminElectionPage() {
       pushGlobalError(error, "failed to load election data");
     } finally {
       setIsElectionDataLoading(false);
+    }
+  }
+
+  async function loadContestData(
+    contestId: string,
+    candidatePageOverride?: number,
+    voterPageOverride?: number
+  ) {
+    if (!token || !electionId || !authorized) {
+      pushGlobalError("Missing token or election id", "Missing token or election id");
+      return;
+    }
+    if (!contestId) {
+      return;
+    }
+
+    setIsElectionDataLoading(true);
+    try {
+      const targetCandidatePage = candidatePageOverride ?? 1;
+      const targetVoterPage = voterPageOverride ?? 1;
+
+      const [candidateList, voterList] = await Promise.all([
+        listContestCandidates(token, contestId, { page: targetCandidatePage, per_page: 10 }),
+        listContestVoterRolls(token, contestId, { page: targetVoterPage, per_page: 10 }),
+      ]);
+
+      setCandidates(candidateList.data.candidates);
+      setCandidatesPagination(candidateList.data.pagination);
+      setCandidatesPage(candidateList.data.pagination.page);
+      setVoters(voterList.data.voters);
+      setVotersPagination(voterList.data.pagination);
+      setVotersPage(voterList.data.pagination.page);
+    } catch (error) {
+      pushGlobalError(error, "failed to load contest data");
+    } finally {
+      setIsElectionDataLoading(false);
+    }
+  }
+
+  async function onSelectContest(nextContestId: string) {
+    setSelectedContestId(nextContestId);
+    setCandidatesPage(1);
+    setVotersPage(1);
+    setImportReport(null);
+    setResults([]);
+
+    const selected = contests.find((item) => item.id === nextContestId) ?? null;
+    if (selected) {
+      setEditContestTitle(selected.title);
+      setEditContestDescription(selected.description ?? "");
+      setEditContestMaxSelections(selected.max_selections);
+      setEditContestMetadata(JSON.stringify(selected.metadata ?? {}, null, 2));
+    } else {
+      setEditContestTitle("");
+      setEditContestDescription("");
+      setEditContestMaxSelections(1);
+      setEditContestMetadata("");
+    }
+
+    await loadContestData(nextContestId, 1, 1);
+  }
+
+  function parseMetadata(raw: string): unknown {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return {};
+    }
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      throw new Error("Metadata must be valid JSON");
+    }
+  }
+
+  async function onCreateContest(event: FormEvent) {
+    event.preventDefault();
+    if (!token || !electionId || !authorized) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
+
+    const title = newContestTitle.trim();
+    if (!title) {
+      pushGlobalError("Contest title is required", "Contest title is required");
+      return;
+    }
+
+    setIsContestSubmitting(true);
+    try {
+      const metadata = parseMetadata(newContestMetadata);
+      const maxSelections = Math.max(1, Number(newContestMaxSelections) || 1);
+      const res = await createContest(token, electionId, {
+        title,
+        description: newContestDescription.trim().length > 0 ? newContestDescription.trim() : null,
+        max_selections: maxSelections,
+        metadata,
+      });
+
+      setNewContestTitle("");
+      setNewContestDescription("");
+      setNewContestMaxSelections(1);
+      setNewContestMetadata("");
+
+      const refreshed = await listElectionContests(token, electionId);
+      setContests(refreshed.data.contests);
+      setMeta((prev) => {
+        if (!prev) return prev;
+        const contestItems = refreshed.data.contests;
+        return {
+          ...prev,
+          contestCount: contestItems.length,
+          candidateEntries: contestItems.reduce((sum, item) => sum + item.candidate_count, 0),
+          voterEntries: contestItems.reduce((sum, item) => sum + item.voter_count, 0),
+        };
+      });
+
+      await onSelectContest(res.data.contest_id);
+      pushGlobalSuccess("Contest created");
+    } catch (error) {
+      pushGlobalError(error, "create contest failed");
+    } finally {
+      setIsContestSubmitting(false);
+    }
+  }
+
+  async function onSaveContest(event: FormEvent) {
+    event.preventDefault();
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
+
+    const title = editContestTitle.trim();
+    if (!title) {
+      pushGlobalError("Contest title is required", "Contest title is required");
+      return;
+    }
+
+    setIsContestSaving(true);
+    try {
+      const metadata = parseMetadata(editContestMetadata);
+      const maxSelections = Math.max(1, Number(editContestMaxSelections) || 1);
+      await updateContest(token, selectedContestId, {
+        title,
+        description: editContestDescription.trim().length > 0 ? editContestDescription.trim() : null,
+        max_selections: maxSelections,
+        metadata,
+      });
+
+      const refreshed = await listElectionContests(token, electionId);
+      setContests(refreshed.data.contests);
+      setMeta((prev) => {
+        if (!prev) return prev;
+        const contestItems = refreshed.data.contests;
+        return {
+          ...prev,
+          contestCount: contestItems.length,
+          candidateEntries: contestItems.reduce((sum, item) => sum + item.candidate_count, 0),
+          voterEntries: contestItems.reduce((sum, item) => sum + item.voter_count, 0),
+        };
+      });
+      pushGlobalSuccess("Contest updated");
+    } catch (error) {
+      pushGlobalError(error, "update contest failed");
+    } finally {
+      setIsContestSaving(false);
+    }
+  }
+
+  async function onDeleteSelectedContest() {
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
+
+    const selected = contests.find((item) => item.id === selectedContestId) ?? null;
+    if (!selected) return;
+    if (selected.is_default) {
+      pushGlobalError("Default contest cannot be deleted", "Default contest cannot be deleted");
+      return;
+    }
+
+    if (!window.confirm("Delete this contest? This will remove its candidates and voter roll entries.")) {
+      return;
+    }
+
+    setIsContestDeleting(true);
+    try {
+      await deleteContest(token, selectedContestId);
+      const refreshed = await listElectionContests(token, electionId);
+      setContests(refreshed.data.contests);
+      setMeta((prev) => {
+        if (!prev) return prev;
+        const contestItems = refreshed.data.contests;
+        return {
+          ...prev,
+          contestCount: contestItems.length,
+          candidateEntries: contestItems.reduce((sum, item) => sum + item.candidate_count, 0),
+          voterEntries: contestItems.reduce((sum, item) => sum + item.voter_count, 0),
+        };
+      });
+
+      const nextId =
+        refreshed.data.contests.find((item) => item.is_default)?.id ?? refreshed.data.contests[0]?.id ?? "";
+      if (nextId) {
+        await onSelectContest(nextId);
+      } else {
+        setSelectedContestId("");
+        setCandidates([]);
+        setCandidatesPagination(DEFAULT_PAGINATION);
+        setVoters([]);
+        setVotersPagination(DEFAULT_PAGINATION);
+        setResults([]);
+      }
+
+      pushGlobalSuccess("Contest deleted");
+    } catch (error) {
+      pushGlobalError(error, "delete contest failed");
+    } finally {
+      setIsContestDeleting(false);
     }
   }
 
@@ -351,11 +664,15 @@ export default function AdminElectionPage() {
 
   async function onAddCandidate(event: FormEvent) {
     event.preventDefault();
-    if (!token || !electionId || !authorized) return;
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
 
     setIsCandidateSubmitting(true);
     try {
-      await createCandidate(token, electionId, {
+      await createContestCandidate(token, selectedContestId, {
         name: candidateName,
         manifesto: candidateManifesto || null,
       });
@@ -383,11 +700,15 @@ export default function AdminElectionPage() {
   }
 
   async function onUpdateCandidate(candidateId: string) {
-    if (!token || !electionId || !authorized) return;
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
 
     setIsCandidateMutatingId(candidateId);
     try {
-      await updateCandidate(token, electionId, candidateId, {
+      await updateContestCandidate(token, selectedContestId, candidateId, {
         name: editCandidateName,
         manifesto: editCandidateManifesto || null,
       });
@@ -402,14 +723,18 @@ export default function AdminElectionPage() {
   }
 
   async function onDeleteCandidate(candidateId: string) {
-    if (!token || !electionId || !authorized) return;
-    if (!window.confirm("Delete this candidate from the election?")) {
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
+    if (!window.confirm("Delete this candidate from the contest?")) {
       return;
     }
 
     setIsCandidateMutatingId(candidateId);
     try {
-      await deleteCandidate(token, electionId, candidateId);
+      await deleteContestCandidate(token, selectedContestId, candidateId);
       await loadElectionData(candidatesPage, votersPage);
       pushGlobalSuccess("Candidate removed");
     } catch (error) {
@@ -421,11 +746,15 @@ export default function AdminElectionPage() {
 
   async function onAddVoter(event: FormEvent) {
     event.preventDefault();
-    if (!token || !electionId || !authorized) return;
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
 
     setIsVoterSubmitting(true);
     try {
-      await addVoterRoll(token, electionId, voterIdInput);
+      await addContestVoterRoll(token, selectedContestId, voterIdInput);
       setVoterIdInput("");
       await loadElectionData(candidatesPage, votersPage);
       pushGlobalSuccess("Voter added to roll");
@@ -437,14 +766,18 @@ export default function AdminElectionPage() {
   }
 
   async function onRemoveVoter(userId: string) {
-    if (!token || !electionId || !authorized) return;
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
     if (!window.confirm("Remove this voter from voter roll?")) {
       return;
     }
 
     setIsVoterMutatingId(userId);
     try {
-      await removeVoterRoll(token, electionId, userId);
+      await removeContestVoterRoll(token, selectedContestId, userId);
       await loadElectionData(candidatesPage, votersPage);
       pushGlobalSuccess("Voter removed from roll");
     } catch (error) {
@@ -455,11 +788,15 @@ export default function AdminElectionPage() {
   }
 
   async function onImportVoterRolls(dryRun: boolean) {
-    if (!token || !electionId || !authorized) return;
+    if (!token || !electionId || !authorized || !selectedContestId) return;
+    if (status !== "draft") {
+      pushGlobalError("Only draft elections can be modified", "Only draft elections can be modified");
+      return;
+    }
     if (
       !dryRun &&
       !window.confirm(
-        "Import voter roll now? This will apply all valid rows to the election."
+        "Import voter roll now? This will apply all valid rows to the contest."
       )
     ) {
       return;
@@ -471,7 +808,7 @@ export default function AdminElectionPage() {
       setIsImporting(true);
     }
     try {
-      const report = await importVoterRolls(token, electionId, {
+      const report = await importContestVoterRolls(token, selectedContestId, {
         format: importFormat,
         data: importPayload,
         dry_run: dryRun,
@@ -493,12 +830,12 @@ export default function AdminElectionPage() {
   }
 
   async function onLoadResults() {
-    if (!token || !electionId || !authorized) return;
+    if (!token || !electionId || !authorized || !selectedContestId) return;
 
     setIsResultsLoading(true);
     try {
-      const res = await getElectionResults(token, electionId);
-      setResults(res.data.results.map((item) => ({ name: item.name, total: item.total })));
+      const res = await getContestResults(token, selectedContestId);
+      setResults(res.data.results);
       pushGlobalSuccess("Results loaded");
     } catch (error) {
       pushGlobalError(error, "failed to load results");
@@ -568,8 +905,18 @@ export default function AdminElectionPage() {
   const hasNextCandidates = candidatesPagination.page < candidatesPagination.total_pages;
   const hasPrevVoters = votersPagination.page > 1;
   const hasNextVoters = votersPagination.page < votersPagination.total_pages;
+  const selectedContest = contests.find((item) => item.id === selectedContestId) ?? null;
+  const canEditDraft = canManage && status === "draft";
+  const canEditSelectedContest = canEditDraft && Boolean(selectedContestId);
   const isImportBusy = isImportValidating || isImporting;
-  const isManageBusy = isElectionDataLoading || isPublishing || isClosing || isElectionUpdating;
+  const isManageBusy =
+    isElectionDataLoading ||
+    isPublishing ||
+    isClosing ||
+    isElectionUpdating ||
+    isContestSubmitting ||
+    isContestSaving ||
+    isContestDeleting;
   const isCandidateBusy = isElectionDataLoading || isCandidateSubmitting || isCandidateMutatingId !== null;
   const isVoterBusy = isElectionDataLoading || isVoterSubmitting || isVoterMutatingId !== null;
   const selectClassName =
@@ -787,9 +1134,7 @@ export default function AdminElectionPage() {
                 type="button"
                 className="w-full rounded-xl border border-border/80 bg-card/70 p-3 text-left text-sm transition duration-200 hover:border-primary/40 hover:bg-card/95"
                 onClick={() => {
-                  setElectionId(item.id);
-                  setCandidatesPage(1);
-                  setVotersPage(1);
+                  resetElectionState(item.id);
                 }}
               >
                 <p className="font-medium">{item.title}</p>
@@ -835,7 +1180,13 @@ export default function AdminElectionPage() {
           <Button
             variant="outline"
             onClick={onLoadResults}
-            disabled={!canManage || status !== "closed" || isResultsLoading || isElectionDataLoading}
+            disabled={
+              !canManage ||
+              !selectedContestId ||
+              status !== "closed" ||
+              isResultsLoading ||
+              isElectionDataLoading
+            }
           >
             {isResultsLoading ? "Loading..." : "Load Results"}
           </Button>
@@ -857,14 +1208,23 @@ export default function AdminElectionPage() {
               <strong>Status:</strong> {status}
             </p>
             <p>
-              <strong>Candidates:</strong> {meta.candidateCount} | <strong>Voters:</strong> {meta.voterCount}
+              <strong>Contests:</strong> {meta.contestCount} | <strong>Candidate entries:</strong>{" "}
+              {meta.candidateEntries} | <strong>Voter entries:</strong> {meta.voterEntries}
             </p>
             <p>
-              <strong>Voter URL:</strong>{" "}
+              <strong>Election voter URL:</strong>{" "}
               <Link className="text-primary underline" href={`/voter/elections/${electionId}`}>
                 /voter/elections/{electionId}
               </Link>
             </p>
+            {selectedContestId ? (
+              <p>
+                <strong>Contest voter URL:</strong>{" "}
+                <Link className="text-primary underline" href={`/voter/contests/${selectedContestId}`}>
+                  /voter/contests/{selectedContestId}
+                </Link>
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -920,6 +1280,180 @@ export default function AdminElectionPage() {
           </form>
         </Card>
 
+        <Card className="space-y-3">
+          <h3 className="font-semibold">Contests (Ballots)</h3>
+          <p className="text-sm text-foreground/70">
+            A contest is a single ballot inside an election. Use multiple contests for province/district elections.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="contest_select">Selected contest</Label>
+              <select
+                id="contest_select"
+                className={selectClassName}
+                value={selectedContestId}
+                onChange={(e) => void onSelectContest(e.target.value)}
+                disabled={!canManage || isElectionDataLoading || contests.length === 0}
+              >
+                {contests.length === 0 ? <option value="">No contests loaded</option> : null}
+                {contests.map((contest) => (
+                  <option key={contest.id} value={contest.id}>
+                    {contest.title}
+                    {contest.is_default ? " (default)" : ""} [{contest.candidate_count} candidates,{" "}
+                    {contest.voter_count} voters]
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Voter URL</p>
+              {selectedContestId ? (
+                <Link className="text-sm text-primary underline" href={`/voter/contests/${selectedContestId}`}>
+                  /voter/contests/{selectedContestId}
+                </Link>
+              ) : (
+                <p className="text-sm text-foreground/60">Select a contest to get its voter URL.</p>
+              )}
+              {selectedContest ? (
+                <p className="text-xs text-foreground/60">
+                  max_selections: {selectedContest.max_selections} | is_default:{" "}
+                  {String(selectedContest.is_default)}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="space-y-3">
+              <h4 className="font-semibold">Edit Selected Contest (Draft Only)</h4>
+              <form onSubmit={onSaveContest} className="space-y-2">
+                <div className="space-y-1">
+                  <Label htmlFor="edit_contest_title">Title</Label>
+                  <Input
+                    id="edit_contest_title"
+                    value={editContestTitle}
+                    onChange={(e) => setEditContestTitle(e.target.value)}
+                    disabled={!canEditSelectedContest || isManageBusy}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_contest_description">Description</Label>
+                  <Input
+                    id="edit_contest_description"
+                    value={editContestDescription}
+                    onChange={(e) => setEditContestDescription(e.target.value)}
+                    disabled={!canEditSelectedContest || isManageBusy}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_contest_max">Max selections</Label>
+                  <Input
+                    id="edit_contest_max"
+                    type="number"
+                    min={1}
+                    value={String(editContestMaxSelections)}
+                    onChange={(e) =>
+                      setEditContestMaxSelections(
+                        Number.isFinite(e.currentTarget.valueAsNumber) ? e.currentTarget.valueAsNumber : 1
+                      )
+                    }
+                    disabled={!canEditSelectedContest || isManageBusy}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_contest_metadata">Metadata (JSON)</Label>
+                  <textarea
+                    id="edit_contest_metadata"
+                    className={textareaClassName}
+                    value={editContestMetadata}
+                    onChange={(e) => setEditContestMetadata(e.target.value)}
+                    disabled={!canEditSelectedContest || isManageBusy}
+                    placeholder='{"province":"Bangkok","district":1}'
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" disabled={!canEditSelectedContest || isManageBusy}>
+                    {isContestSaving ? "Saving..." : "Save Contest"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-red-500/40 text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
+                    onClick={() => void onDeleteSelectedContest()}
+                    disabled={
+                      !canEditSelectedContest ||
+                      isManageBusy ||
+                      Boolean(selectedContest?.is_default) ||
+                      isContestDeleting
+                    }
+                  >
+                    {isContestDeleting ? "Deleting..." : "Delete Contest"}
+                  </Button>
+                </div>
+                {selectedContest?.is_default ? (
+                  <p className="text-xs text-foreground/60">Default contest cannot be deleted.</p>
+                ) : null}
+              </form>
+            </Card>
+
+            <Card className="space-y-3">
+              <h4 className="font-semibold">Create Contest (Draft Only)</h4>
+              <form onSubmit={onCreateContest} className="space-y-2">
+                <div className="space-y-1">
+                  <Label htmlFor="new_contest_title">Title</Label>
+                  <Input
+                    id="new_contest_title"
+                    value={newContestTitle}
+                    onChange={(e) => setNewContestTitle(e.target.value)}
+                    disabled={!canEditDraft || isManageBusy}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="new_contest_description">Description</Label>
+                  <Input
+                    id="new_contest_description"
+                    value={newContestDescription}
+                    onChange={(e) => setNewContestDescription(e.target.value)}
+                    disabled={!canEditDraft || isManageBusy}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="new_contest_max">Max selections</Label>
+                  <Input
+                    id="new_contest_max"
+                    type="number"
+                    min={1}
+                    value={String(newContestMaxSelections)}
+                    onChange={(e) =>
+                      setNewContestMaxSelections(
+                        Number.isFinite(e.currentTarget.valueAsNumber) ? e.currentTarget.valueAsNumber : 1
+                      )
+                    }
+                    disabled={!canEditDraft || isManageBusy}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="new_contest_metadata">Metadata (JSON)</Label>
+                  <textarea
+                    id="new_contest_metadata"
+                    className={textareaClassName}
+                    value={newContestMetadata}
+                    onChange={(e) => setNewContestMetadata(e.target.value)}
+                    disabled={!canEditDraft || isManageBusy}
+                    placeholder='{"province":"Chiang Mai","district":1}'
+                  />
+                </div>
+                <Button type="submit" disabled={!canEditDraft || isManageBusy}>
+                  {isContestSubmitting ? "Creating..." : "Create Contest"}
+                </Button>
+              </form>
+            </Card>
+          </div>
+        </Card>
+
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="space-y-3">
             <h3 className="font-semibold">Candidates</h3>
@@ -928,16 +1462,16 @@ export default function AdminElectionPage() {
                 placeholder="Candidate name"
                 value={candidateName}
                 onChange={(e) => setCandidateName(e.target.value)}
-                disabled={!canManage || isCandidateBusy}
+                disabled={!canEditSelectedContest || isCandidateBusy}
                 required
               />
               <Input
                 placeholder="Manifesto (optional)"
                 value={candidateManifesto}
                 onChange={(e) => setCandidateManifesto(e.target.value)}
-                disabled={!canManage || isCandidateBusy}
+                disabled={!canEditSelectedContest || isCandidateBusy}
               />
-              <Button type="submit" disabled={!canManage || isCandidateBusy}>
+              <Button type="submit" disabled={!canEditSelectedContest || isCandidateBusy}>
                 {isCandidateSubmitting ? "Adding..." : "Add Candidate"}
               </Button>
             </form>
@@ -975,7 +1509,7 @@ export default function AdminElectionPage() {
                             <Button
                               size="sm"
                               onClick={() => void onUpdateCandidate(candidate.id)}
-                              disabled={!editCandidateName.trim() || isCandidateMutating}
+                              disabled={!canEditSelectedContest || !editCandidateName.trim() || isCandidateMutating}
                             >
                               {isCandidateMutating ? "Saving..." : "Save"}
                             </Button>
@@ -983,7 +1517,7 @@ export default function AdminElectionPage() {
                               size="sm"
                               variant="outline"
                               onClick={cancelEditCandidate}
-                              disabled={isCandidateMutating}
+                              disabled={!canEditSelectedContest || isCandidateMutating}
                             >
                               Cancel
                             </Button>
@@ -1002,7 +1536,9 @@ export default function AdminElectionPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => startEditCandidate(candidate)}
-                              disabled={isElectionDataLoading || isCandidateMutatingId !== null}
+                              disabled={
+                                !canEditSelectedContest || isElectionDataLoading || isCandidateMutatingId !== null
+                              }
                             >
                               Edit
                             </Button>
@@ -1010,7 +1546,9 @@ export default function AdminElectionPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => onDeleteCandidate(candidate.id)}
-                              disabled={isElectionDataLoading || isCandidateMutatingId !== null}
+                              disabled={
+                                !canEditSelectedContest || isElectionDataLoading || isCandidateMutatingId !== null
+                              }
                             >
                               {isCandidateMutating ? "Deleting..." : "Delete"}
                             </Button>
@@ -1054,10 +1592,10 @@ export default function AdminElectionPage() {
                 placeholder="User UUID"
                 value={voterIdInput}
                 onChange={(e) => setVoterIdInput(e.target.value)}
-                disabled={!canManage || isVoterBusy}
+                disabled={!canEditSelectedContest || isVoterBusy}
                 required
               />
-              <Button type="submit" disabled={!canManage || isVoterBusy}>
+              <Button type="submit" disabled={!canEditSelectedContest || isVoterBusy}>
                 {isVoterSubmitting ? "Adding..." : "Add Voter"}
               </Button>
             </form>
@@ -1086,7 +1624,9 @@ export default function AdminElectionPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => onRemoveVoter(voter.user_id)}
-                        disabled={isElectionDataLoading || isVoterMutatingId !== null}
+                        disabled={
+                          !canEditSelectedContest || isElectionDataLoading || isVoterMutatingId !== null
+                        }
                       >
                         {isVoterMutating ? "Removing..." : "Remove"}
                       </Button>
@@ -1135,14 +1675,18 @@ export default function AdminElectionPage() {
                   type="button"
                   variant="outline"
                   onClick={() => void onImportVoterRolls(true)}
-                  disabled={!canManage || !importPayload.trim() || isImportBusy || isElectionDataLoading}
+                  disabled={
+                    !canEditSelectedContest || !importPayload.trim() || isImportBusy || isElectionDataLoading
+                  }
                 >
                   {isImportValidating ? "Validating..." : "Validate (Dry Run)"}
                 </Button>
                 <Button
                   type="button"
                   onClick={() => void onImportVoterRolls(false)}
-                  disabled={!canManage || !importPayload.trim() || isImportBusy || isElectionDataLoading}
+                  disabled={
+                    !canEditSelectedContest || !importPayload.trim() || isImportBusy || isElectionDataLoading
+                  }
                 >
                   {isImporting ? "Importing..." : "Import"}
                 </Button>
@@ -1193,7 +1737,7 @@ export default function AdminElectionPage() {
           <Card className="space-y-2">
             <h3 className="font-semibold">Results</h3>
             {results.map((r) => (
-              <p key={r.name} className="text-sm">
+              <p key={r.candidate_id} className="text-sm">
                 {r.name}: <strong>{r.total}</strong>
               </p>
             ))}

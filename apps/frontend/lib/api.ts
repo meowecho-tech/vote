@@ -1,7 +1,9 @@
 import {
   BallotResponse,
   CandidateListResponse,
+  ContestAdminListResponse,
   ContestBallotResponse,
+  ContestResultsResponse,
   ElectionDetail,
   ElectionListResponse,
   ElectionResultsResponse,
@@ -299,6 +301,148 @@ export async function getElectionResults(
   electionId: string
 ): Promise<ElectionResultsResponse> {
   return request<ElectionResultsResponse>(`/elections/${electionId}/results`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listElectionContests(
+  accessToken: string,
+  electionId: string
+): Promise<ContestAdminListResponse> {
+  return request<ContestAdminListResponse>(`/elections/${electionId}/contests`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function createContest(
+  accessToken: string,
+  electionId: string,
+  payload: { title: string; description: string | null; max_selections: number; metadata: unknown }
+) {
+  return request<{ data: { contest_id: string } }>(`/elections/${electionId}/contests`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateContest(
+  accessToken: string,
+  contestId: string,
+  payload: { title: string; description: string | null; max_selections: number; metadata: unknown }
+) {
+  return request<{ data: { ok: boolean } }>(`/contests/${contestId}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteContest(accessToken: string, contestId: string) {
+  return request<{ data: { ok: boolean } }>(`/contests/${contestId}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listContestCandidates(
+  accessToken: string,
+  contestId: string,
+  params?: { page?: number; per_page?: number }
+): Promise<CandidateListResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.per_page) query.set("per_page", String(params.per_page));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return request<CandidateListResponse>(`/contests/${contestId}/candidates${suffix}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function createContestCandidate(
+  accessToken: string,
+  contestId: string,
+  payload: { name: string; manifesto: string | null }
+) {
+  return request<{ data: { candidate_id: string } }>(`/contests/${contestId}/candidates`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateContestCandidate(
+  accessToken: string,
+  contestId: string,
+  candidateId: string,
+  payload: { name: string; manifesto: string | null }
+) {
+  return request<{ data: { ok: boolean } }>(`/contests/${contestId}/candidates/${candidateId}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteContestCandidate(
+  accessToken: string,
+  contestId: string,
+  candidateId: string
+) {
+  return request<{ data: { ok: boolean } }>(`/contests/${contestId}/candidates/${candidateId}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function listContestVoterRolls(
+  accessToken: string,
+  contestId: string,
+  params?: { page?: number; per_page?: number }
+): Promise<VoterRollResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.per_page) query.set("per_page", String(params.per_page));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return request<VoterRollResponse>(`/contests/${contestId}/voter-rolls${suffix}`, {
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function addContestVoterRoll(accessToken: string, contestId: string, userId: string) {
+  return request<{ data: { ok: boolean } }>(`/contests/${contestId}/voter-rolls`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function importContestVoterRolls(
+  accessToken: string,
+  contestId: string,
+  payload: { format: "csv" | "json"; data: string; dry_run?: boolean }
+): Promise<VoterRollImportReport> {
+  return request<VoterRollImportReport>(`/contests/${contestId}/voter-rolls/import`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function removeContestVoterRoll(accessToken: string, contestId: string, userId: string) {
+  return request<{ data: { ok: boolean } }>(`/contests/${contestId}/voter-rolls/${userId}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export async function getContestResults(
+  accessToken: string,
+  contestId: string
+): Promise<ContestResultsResponse> {
+  return request<ContestResultsResponse>(`/contests/${contestId}/results`, {
     headers: authHeaders(accessToken),
   });
 }

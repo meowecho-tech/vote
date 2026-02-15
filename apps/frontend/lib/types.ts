@@ -202,3 +202,36 @@ export type OrganizationListResponse = {
     organizations: Organization[];
   };
 };
+
+export type ContestAdminSummary = {
+  id: string;
+  election_id: string;
+  title: string;
+  description?: string | null;
+  max_selections: number;
+  metadata: unknown;
+  is_default: boolean;
+  created_at: string;
+  candidate_count: number;
+  voter_count: number;
+};
+
+export type ContestAdminListResponse = {
+  data: {
+    contests: ContestAdminSummary[];
+  };
+};
+
+export type ContestResultsResponse = {
+  data: {
+    contest_id: string;
+    contest_title: string;
+    election_id: string;
+    election_title: string;
+    results: {
+      candidate_id: string;
+      name: string;
+      total: number;
+    }[];
+  };
+};
