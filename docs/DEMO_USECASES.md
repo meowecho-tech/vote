@@ -128,6 +128,25 @@ Usecase steps (admin management):
 
 This section describes how to model a real Thailand-style election in this system.
 
+### Thai Version (สรุปแนวคิด + Flow)
+
+- `Organization` = หน่วยงานจัด (เช่น "กกต")
+- `Election` = เหตุการณ์เลือกตั้งทั้งประเทศ 1 ครั้ง (เช่น "เลือกตั้ง สส. 256X")
+- `Contest` = 1 เขตเลือกตั้ง (เช่น "เชียงใหม่ เขต 1", "กรุงเทพ เขต 2")
+  - ใส่ `metadata` เป็น `{ "province": "...", "district": 1, ... }` เพื่อเก็บข้อมูลจังหวัด/เขต (และใช้จัดกลุ่มผล)
+- `Candidate` = ผู้สมัคร "ของ contest นั้น"
+- `Voter Roll` = สิทธิ์ผู้มีสิทธิ์ "ต่อ contest/เขต" (คนละเขตก็อยู่คนละ contest)
+
+Flow ที่รองรับ:
+1) Admin สร้าง `Election`
+2) Admin สร้าง `Contests` ตาม 77 จังหวัด x หลายเขต
+3) ใส่ผู้สมัคร (`candidates`) แยกตาม `contest`
+4) ใส่ `voter roll` แยกตาม `contest` (ผู้มีสิทธิ์โหวตเฉพาะเขตของตัวเอง)
+5) Publish เปิดเลือกตั้ง
+6) ผู้ใช้ล็อกอินแล้วหน้า home จะเห็น `contest` ที่ตัวเองมีสิทธิ์ และโหวตที่ `/voter/contests/{contestId}`
+7) Close ปิดเลือกตั้ง
+8) โหลดผล "รายเขต" ด้วย results ต่อ `contest` (และรวมผลระดับประเทศได้โดยรวมผลทุก `contest` เพิ่มเติมในอนาคต)
+
 Data model mapping:
 - `Organization`: the organizer (example: "Election Commission of Thailand")
 - `Election`: the national event (example: "General Election 256X")
