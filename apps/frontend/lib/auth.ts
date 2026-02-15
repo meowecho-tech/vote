@@ -4,12 +4,21 @@ type JwtPayload = {
   role?: string;
 };
 
+export const AUTH_CHANGED_EVENT = "vote_auth_changed";
+
 const ACCESS_TOKEN_KEY = "vote_access_token";
 const REFRESH_TOKEN_KEY = "vote_refresh_token";
 const TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function canUseBrowserStorage() {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
+}
+
+function notifyAuthChanged() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
 
 function setTokenCookie(name: string, value: string) {
@@ -77,6 +86,7 @@ export function persistAuthTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   setTokenCookie(ACCESS_TOKEN_KEY, accessToken);
   setTokenCookie(REFRESH_TOKEN_KEY, refreshToken);
+  notifyAuthChanged();
 }
 
 export function updateAccessToken(accessToken: string) {
@@ -86,6 +96,7 @@ export function updateAccessToken(accessToken: string) {
 
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   setTokenCookie(ACCESS_TOKEN_KEY, accessToken);
+  notifyAuthChanged();
 }
 
 export function clearAuthTokens() {
@@ -97,6 +108,7 @@ export function clearAuthTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   clearTokenCookie(ACCESS_TOKEN_KEY);
   clearTokenCookie(REFRESH_TOKEN_KEY);
+  notifyAuthChanged();
 }
 
 export function sanitizeNextPath(next: string | null | undefined): string | null {

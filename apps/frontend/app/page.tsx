@@ -11,13 +11,15 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import {
-  clearAuthTokens,
+  AUTH_CHANGED_EVENT,
   getRoleFromAccessToken,
   getStoredAccessToken,
   type UserRole,
 } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error";
 import type { VotableContestSummary } from "@/lib/types";
+
+type ElectionStatus = "draft" | "published" | "closed";
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -26,6 +28,17 @@ function formatDateTime(value: string) {
   }
 
   return date.toLocaleString();
+}
+
+function electionStatusBadgeClass(status: ElectionStatus) {
+  switch (status) {
+    case "published":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200";
+    case "closed":
+      return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200";
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200";
+  }
 }
 
 function buildVoterContestHint(contest: VotableContestSummary) {
@@ -66,17 +79,23 @@ export default function HomePage() {
   const [voterContestsError, setVoterContestsError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = getStoredAccessToken();
-    if (!token) {
-      setAccessToken(null);
-      setIsAuthed(false);
-      setRole(null);
-      return;
+    function syncAuth() {
+      const token = getStoredAccessToken();
+      if (!token) {
+        setAccessToken(null);
+        setIsAuthed(false);
+        setRole(null);
+        return;
+      }
+
+      setAccessToken(token);
+      setIsAuthed(true);
+      setRole(getRoleFromAccessToken(token));
     }
 
-    setAccessToken(token);
-    setIsAuthed(true);
-    setRole(getRoleFromAccessToken(token));
+    syncAuth();
+    window.addEventListener(AUTH_CHANGED_EVENT, syncAuth);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, syncAuth);
   }, []);
 
   useEffect(() => {
@@ -120,16 +139,6 @@ export default function HomePage() {
     };
   }, [accessToken, role, toastError]);
 
-  function signOut() {
-    clearAuthTokens();
-    sessionStorage.removeItem("vote_email");
-    setAccessToken(null);
-    setIsAuthed(false);
-    setRole(null);
-    setVoterContests([]);
-    setVoterContestsError(null);
-  }
-
   function reloadVoterContests() {
     if (!accessToken || role !== "voter") {
       return;
@@ -154,11 +163,43 @@ export default function HomePage() {
 
   const isAdmin = role === "admin" || role === "election_officer";
   const isVoter = role === "voter";
-  const roleLabel = role ? `Role: ${role}` : "Role: guest";
   const canVoteNowCount = useMemo(
     () => voterContests.filter((item) => item.can_vote_now).length,
     [voterContests]
   );
+
+  const voterContestGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { election: VotableContestSummary["election"]; contests: VotableContestSummary[] }
+    >();
+
+    for (const contest of voterContests) {
+      const key = contest.election.id;
+      const existing = map.get(key);
+      if (existing) {
+        existing.contests.push(contest);
+      } else {
+        map.set(key, { election: contest.election, contests: [contest] });
+      }
+    }
+
+    const groups = Array.from(map.values());
+    groups.sort((a, b) => a.election.title.localeCompare(b.election.title));
+    for (const group of groups) {
+      group.contests.sort((a, b) => {
+        if (a.can_vote_now !== b.can_vote_now) {
+          return a.can_vote_now ? -1 : 1;
+        }
+        if (a.has_voted !== b.has_voted) {
+          return a.has_voted ? 1 : -1;
+        }
+        return a.title.localeCompare(b.title);
+      });
+    }
+
+    return groups;
+  }, [voterContests]);
 
   return (
     <main className="space-y-6">
@@ -177,7 +218,6 @@ export default function HomePage() {
               Election-ready interface for secure ballot access, voter verification, and reliable
               vote submission with receipts.
             </p>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/55">{roleLabel}</p>
             {isAuthed ? (
               <div className="flex flex-wrap gap-3">
                 {isAdmin ? (
@@ -187,10 +227,14 @@ export default function HomePage() {
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </Link>
+                ) : isVoter ? (
+                  <Link href="#my-ballots">
+                    <Button>
+                      Go to ballots
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
                 ) : null}
-                <Button variant="outline" onClick={signOut}>
-                  Sign out
-                </Button>
               </div>
             ) : (
               <div className="flex flex-wrap gap-3">
@@ -224,7 +268,7 @@ export default function HomePage() {
       </section>
 
       <div className={`grid gap-4 ${isAdmin ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
-        <Card className="fade-up space-y-3">
+        <Card id="my-ballots" className="fade-up space-y-3">
           <h2 className="text-lg font-semibold tracking-tight">Voter Workflow</h2>
           {isVoter ? (
             <>
@@ -254,33 +298,70 @@ export default function HomePage() {
                 ) : voterContests.length === 0 ? (
                   <p className="text-sm text-foreground/60">No ballots assigned to your voter roll.</p>
                 ) : (
-                  voterContests.map((contest) => (
+                  voterContestGroups.map((group) => (
                     <div
-                      key={contest.id}
-                      className="rounded-xl border border-border/80 bg-card/70 p-3 text-sm"
+                      key={group.election.id}
+                      className="rounded-2xl border border-border/70 bg-card/55 p-4 shadow-sm"
                     >
-                      <div className="flex flex-col gap-1">
-                        <p className="font-semibold">{contest.title}</p>
-                        {contest.title !== contest.election.title ? (
-                          <p className="text-xs text-foreground/65">{contest.election.title}</p>
-                        ) : null}
-                        <p className="text-xs text-foreground/60">{contest.id}</p>
-                        <p className="text-xs text-foreground/70">{buildVoterContestHint(contest)}</p>
-                        <p className="text-xs text-foreground/60">
-                          Opens: {formatDateTime(contest.election.opens_at)} | Closes:{" "}
-                          {formatDateTime(contest.election.closes_at)}
-                        </p>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold">{group.election.title}</p>
+                          {group.election.description ? (
+                            <p className="text-xs text-foreground/65">{group.election.description}</p>
+                          ) : null}
+                          <p className="text-xs text-foreground/60">
+                            Opens: {formatDateTime(group.election.opens_at)} | Closes:{" "}
+                            {formatDateTime(group.election.closes_at)}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex w-fit rounded-full border px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${electionStatusBadgeClass(
+                            group.election.status as ElectionStatus
+                          )}`}
+                        >
+                          {group.election.status}
+                        </span>
                       </div>
-                      <div className="mt-2">
-                        {contest.can_vote_now ? (
-                          <Link href={`/voter/contests/${contest.id}`}>
-                            <Button size="sm">Go to vote</Button>
-                          </Link>
-                        ) : (
-                          <Button size="sm" variant="outline" disabled>
-                            {contest.has_voted ? "Already voted" : "Unavailable"}
-                          </Button>
-                        )}
+
+                      <div className="mt-3 space-y-2">
+                        {group.contests.map((contest) => (
+                          <div
+                            key={contest.id}
+                            className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card/70 p-3 text-sm transition hover:border-primary/35 hover:bg-card/95 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold">{contest.title}</p>
+                                {contest.has_voted ? (
+                                  <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                                    voted
+                                  </span>
+                                ) : contest.can_vote_now ? (
+                                  <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+                                    open
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full border border-slate-500/25 bg-slate-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
+                                    locked
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-foreground/70">{buildVoterContestHint(contest)}</p>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              {contest.can_vote_now ? (
+                                <Link href={`/voter/contests/${contest.id}`}>
+                                  <Button size="sm">Go to vote</Button>
+                                </Link>
+                              ) : (
+                                <Button size="sm" variant="outline" disabled>
+                                  {contest.has_voted ? "Already voted" : "Unavailable"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))

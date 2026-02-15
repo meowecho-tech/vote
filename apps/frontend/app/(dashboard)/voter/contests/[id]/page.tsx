@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import { Ballot } from "@/components/voter/ballot";
 import { Card } from "@/components/ui/card";
@@ -70,7 +72,16 @@ export default function VoterContestPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl">
+    <main className="mx-auto max-w-3xl space-y-4">
+      <div className="fade-up">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to ballots
+        </Link>
+      </div>
       <Ballot
         contestId={ballot.contest_id}
         electionTitle={ballot.election_title}
@@ -81,4 +92,3 @@ export default function VoterContestPage() {
     </main>
   );
 }
-

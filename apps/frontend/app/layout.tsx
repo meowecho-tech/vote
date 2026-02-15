@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { AppProviders } from "@/components/providers/app-providers";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AppHeader } from "@/components/shell/app-header";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,9 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-background font-sans antialiased">
         <AppProviders>
           <div className="election-shell mx-auto w-full max-w-7xl px-4 pb-10 pt-8 sm:px-6 lg:px-8">
-            <div className="fade-up mb-6 flex justify-end">
-              <ThemeToggle />
-            </div>
+            <AppHeader />
             {children}
           </div>
         </AppProviders>
