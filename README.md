@@ -39,9 +39,15 @@ bun run dev
 ## Useful Commands
 
 - `make seed` - create demo org/election/users/candidates/voter-roll
+- `make db-reset` - drop all tables and re-apply migrations (local dev only)
+- `make seed-scenarios` - seed both "student" + "national" scenarios (requires backend running)
 - `make test-backend` - run Rust tests
 - `make test-integration` - run API integration flow tests
 - `make test-frontend-smoke` - smoke test key frontend routes
+
+## Demo Usecases
+
+See `docs/DEMO_USECASES.md`.
 
 ## API Base
 

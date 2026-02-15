@@ -1,4 +1,5 @@
 .PHONY: infra-up infra-down migrate backend-run frontend-dev seed test-integration test-frontend-smoke test-backend
+.PHONY: db-reset seed-scenarios
 
 infra-up:
 	docker compose -f infra/docker-compose.yml --env-file infra/.env up -d
@@ -19,6 +20,12 @@ frontend-dev:
 
 seed:
 	bash scripts/seed_demo.sh
+
+db-reset:
+	CONFIRM=yes bash scripts/db_reset.sh
+
+seed-scenarios:
+	bash scripts/seed_scenarios.sh
 
 test-backend:
 	cd apps/backend && cargo test
