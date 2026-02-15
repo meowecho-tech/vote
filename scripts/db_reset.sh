@@ -34,10 +34,10 @@ SQL
 
 docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 -c "$DROP_SQL" >/dev/null
 
-mapfile -t MIGRATIONS < <(find apps/backend/migrations -maxdepth 1 -type f -name '*.sql' | sort)
-for file in "${MIGRATIONS[@]}"; do
+# Bash 3.2 (default on macOS) does not support `mapfile`/`readarray`.
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
   docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 < "$file" >/dev/null
-done
+done < <(find apps/backend/migrations -maxdepth 1 -type f -name '*.sql' | sort)
 
 echo "Database reset complete."
-
