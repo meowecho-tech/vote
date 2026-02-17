@@ -43,6 +43,7 @@ bun run dev
 - `make seed-scenarios` - seed both "student" + "national" scenarios (requires backend running)
 - `make seed-student` - seed only student president scenario (requires backend running)
 - `make seed-national` - seed only national (province/district) scenario (requires backend running)
+- `make bulk-import-national ELECTION_ID=<uuid> ACCESS_TOKEN=<token>` - bulk import contests/candidates/voter-rolls from CSV (see `docs/NATIONAL_BULK_IMPORT.md`)
 - `make test-backend` - run Rust tests
 - `make test-integration` - run API integration flow tests
 - `make test-frontend-smoke` - smoke test key frontend routes
@@ -50,6 +51,10 @@ bun run dev
 ## Demo Usecases
 
 See `docs/DEMO_USECASES.md`.
+
+## Bulk Import (National Scale)
+
+See `docs/NATIONAL_BULK_IMPORT.md` for CSV format, dry-run workflow, and commands.
 
 ## API Base
 

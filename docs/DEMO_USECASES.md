@@ -176,4 +176,6 @@ Admin flow (high level):
 
 Notes / practical tips:
 - Each election also has a "default contest" for backwards compatibility. For multi-district elections, you can leave it empty and avoid adding voter-roll entries to it.
-- Managing hundreds of contests manually in the UI is possible but slow. For real operations, consider automating contest creation and voter-roll imports using the admin REST API endpoints.
+- Managing hundreds of contests manually in the UI is possible but slow. For real operations, use bulk import with:
+  - `make bulk-import-national ELECTION_ID=<uuid> ACCESS_TOKEN=<token> VOTER_DRY_RUN=<true|false>`
+  - Full guide: `docs/NATIONAL_BULK_IMPORT.md`
