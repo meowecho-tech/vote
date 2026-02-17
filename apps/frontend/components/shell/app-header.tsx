@@ -23,13 +23,13 @@ type AuthSnapshot = {
 function roleBadgeClass(role: UserRole) {
   switch (role) {
     case "admin":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200";
     case "election_officer":
-      return "border-blue-500/30 bg-blue-500/10 text-blue-200";
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/35 dark:text-blue-200";
     case "auditor":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200";
     default:
-      return "border-slate-500/30 bg-slate-500/10 text-slate-200";
+      return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200";
   }
 }
 
@@ -169,4 +169,3 @@ export function AppHeader() {
     </header>
   );
 }
-

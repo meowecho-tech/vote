@@ -333,7 +333,7 @@ export default function HomePage() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold">{contest.title}</p>
                                 {contest.has_voted ? (
-                                  <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
                                     voted
                                   </span>
                                 ) : contest.can_vote_now ? (
@@ -341,7 +341,7 @@ export default function HomePage() {
                                     open
                                   </span>
                                 ) : (
-                                  <span className="rounded-full border border-slate-500/25 bg-slate-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200">
                                     locked
                                   </span>
                                 )}

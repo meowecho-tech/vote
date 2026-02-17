@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,9 +28,11 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const submitted = useMemo(() => message?.toLowerCase().startsWith("submitted successfully"), [message]);
-  const disabled = useMemo(() => selected.length === 0 || submitting, [selected, submitting]);
+  const [voteError, setVoteError] = useState<string | null>(null);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [submittedSelection, setSubmittedSelection] = useState<Candidate[]>([]);
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const submitted = receiptId !== null;
   const selectionLimit = useMemo(() => Math.max(1, Number(maxSelections) || 1), [maxSelections]);
   const showElectionTitle = useMemo(() => contestTitle.trim() !== electionTitle.trim(), [contestTitle, electionTitle]);
   const selectedCandidates = useMemo(() => {
@@ -39,6 +42,14 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
     const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
     return selected.map((id) => byId.get(id)).filter((candidate): candidate is Candidate => Boolean(candidate));
   }, [candidates, selected]);
+  const limitReached = useMemo(
+    () => selectionLimit > 1 && selected.length >= selectionLimit,
+    [selected.length, selectionLimit]
+  );
+  const remainingSelections = useMemo(
+    () => Math.max(0, selectionLimit - selected.length),
+    [selectionLimit, selected.length]
+  );
 
   useEffect(() => {
     if (!confirmOpen) {
@@ -50,6 +61,14 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
     return () => {
       document.body.style.overflow = prevOverflow;
     };
+  }, [confirmOpen]);
+
+  useEffect(() => {
+    if (!confirmOpen) {
+      return;
+    }
+    const handle = window.setTimeout(() => confirmButtonRef.current?.focus(), 0);
+    return () => window.clearTimeout(handle);
   }, [confirmOpen]);
 
   useEffect(() => {
@@ -89,27 +108,28 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
 
   async function submitVote(): Promise<boolean> {
     setSubmitting(true);
-    setMessage(null);
+    setVoteError(null);
     try {
       const token = getStoredAccessToken();
       if (!token) {
         throw new Error("missing access token");
       }
 
+      const snapshot = selectedCandidates;
       const idempotencyKey = crypto.randomUUID();
       const response = await castContestVote(contestId, token, {
         idempotency_key: idempotencyKey,
         selections: selected.map((candidate_id) => ({ candidate_id })),
       });
 
-      const successMessage = `Submitted successfully. Receipt: ${response.data.receipt_id}`;
-      setMessage(successMessage);
       success("Vote submitted", `Receipt: ${response.data.receipt_id}`);
+      setReceiptId(response.data.receipt_id);
+      setSubmittedSelection(snapshot);
       setSelected([]);
       return true;
     } catch (error) {
       const message = getErrorMessage(error, "vote failed");
-      setMessage(message);
+      setVoteError(message);
       notifyError("Vote submission failed", message);
       return false;
     } finally {
@@ -119,6 +139,62 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
 
   function clearSelection() {
     setSelected([]);
+  }
+
+  function openConfirm() {
+    if (selected.length === 0 || submitting) {
+      return;
+    }
+    setVoteError(null);
+    setConfirmOpen(true);
+  }
+
+  if (submitted && receiptId) {
+    return (
+      <Card className="fade-up space-y-5">
+        <div className="space-y-2">
+          <p className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
+            Vote recorded
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">{contestTitle}</h2>
+          {showElectionTitle ? (
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/60">{electionTitle}</p>
+          ) : null}
+          <p className="text-sm text-foreground/70">
+            Your vote has been submitted successfully. Keep your receipt ID for verification or support.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700/80 dark:text-emerald-200/80">
+            Receipt
+          </p>
+          <p className="mt-1 font-semibold">{receiptId}</p>
+        </div>
+
+        {submittedSelection.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">Selected candidates</p>
+            <ul className="space-y-2">
+              {submittedSelection.map((candidate) => (
+                <li key={candidate.id} className="rounded-xl border border-border/70 bg-card/70 p-3 text-sm">
+                  <p className="font-semibold">{candidate.name}</p>
+                  {candidate.manifesto ? (
+                    <p className="mt-0.5 text-xs text-foreground/65">{candidate.manifesto}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          <Link href="/">
+            <Button>Back to ballots</Button>
+          </Link>
+        </div>
+      </Card>
+    );
   }
 
   return (
@@ -139,52 +215,129 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
         </p>
       </div>
 
-      <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 text-sm shadow-sm">
-        Selected candidates:{" "}
-        <strong>
-          {selected.length}/{selectionLimit}
-        </strong>
-      </div>
+      <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr] lg:items-start">
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-border/70 bg-card/70 px-4 py-3 text-sm shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold">
+                Selected:{" "}
+                <span className="text-foreground/70">
+                  {selected.length}/{selectionLimit}
+                </span>
+              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground/60">
+                Remaining: {remainingSelections}
+              </p>
+            </div>
+            {limitReached ? (
+              <p className="mt-1 text-xs text-foreground/60">
+                Selection limit reached. Unselect a candidate to choose another.
+              </p>
+            ) : null}
+          </div>
 
-      <div className="space-y-3">
-        {candidates.map((candidate) => {
-          const checked = selected.includes(candidate.id);
-          return (
-            <label
-              key={candidate.id}
-              className={cn(
-                "group flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition duration-200",
-                checked
-                  ? "border-primary/60 bg-primary/10 shadow-[0_12px_28px_-18px_rgba(29,78,216,0.85)]"
-                  : "border-border/80 bg-card/70 hover:border-primary/40 hover:bg-card/95"
+          <div className="space-y-3">
+            {candidates.map((candidate) => {
+              const checked = selected.includes(candidate.id);
+              const checkboxDisabled = submitting || (limitReached && !checked);
+              return (
+                <label
+                  key={candidate.id}
+                  className={cn(
+                    "group flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition duration-200",
+                    checked
+                      ? "border-primary/60 bg-primary/10 shadow-[0_12px_28px_-18px_rgba(29,78,216,0.85)]"
+                      : checkboxDisabled
+                        ? "border-border/70 bg-card/40 opacity-60"
+                        : "border-border/80 bg-card/70 hover:border-primary/40 hover:bg-card/95"
+                  )}
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={checkboxDisabled}
+                    onCheckedChange={() => toggle(candidate.id)}
+                  />
+                  <span className="space-y-1">
+                    <span className="block text-sm font-semibold">{candidate.name}</span>
+                    {candidate.manifesto ? (
+                      <span className="block text-xs text-foreground/65">{candidate.manifesto}</span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-3 lg:sticky lg:top-8">
+          <div className="rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/60">
+                  Review
+                </p>
+                <p className="text-base font-semibold">Your selection</p>
+                <p className="text-xs text-foreground/60">
+                  {selectedCandidates.length}/{selectionLimit} selected
+                </p>
+              </div>
+              <p className="rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-foreground/70">
+                max {selectionLimit}
+              </p>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {selectedCandidates.length === 0 ? (
+                <p className="text-sm text-foreground/60">No candidates selected yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {selectedCandidates.map((candidate) => (
+                    <li
+                      key={candidate.id}
+                      className="flex items-start justify-between gap-2 rounded-xl border border-border/70 bg-card/80 p-2 text-sm"
+                    >
+                      <div>
+                        <p className="font-semibold">{candidate.name}</p>
+                        {candidate.manifesto ? (
+                          <p className="mt-0.5 text-xs text-foreground/65">{candidate.manifesto}</p>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 px-0"
+                        onClick={() => toggle(candidate.id)}
+                        disabled={submitting}
+                        aria-label={`Remove ${candidate.name}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
               )}
-            >
-              <Checkbox checked={checked} onCheckedChange={() => toggle(candidate.id)} />
-              <span className="space-y-1">
-                <span className="block text-sm font-semibold">{candidate.name}</span>
-                {candidate.manifesto ? (
-                  <span className="block text-xs text-foreground/65">{candidate.manifesto}</span>
-                ) : null}
-              </span>
-            </label>
-          );
-        })}
-      </div>
+            </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          onClick={() => {
-            if (disabled) return;
-            setMessage(null);
-            setConfirmOpen(true);
-          }}
-          disabled={disabled}
-        >
-          {submitting ? "Submitting..." : "Submit Vote"}
-        </Button>
-        <Button variant="outline" onClick={clearSelection} disabled={selected.length === 0 || submitting}>
-          Clear selection
-        </Button>
+            {voteError && !confirmOpen ? (
+              <div className="mt-3">
+                <ErrorAlert title="Vote submission failed" message={voteError} />
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-2">
+              <Button onClick={openConfirm} disabled={selected.length === 0 || submitting}>
+                {submitting ? "Submitting..." : "Review & Submit"}
+              </Button>
+              <Button variant="outline" onClick={clearSelection} disabled={selected.length === 0 || submitting}>
+                Clear selection
+              </Button>
+              <p className="text-xs text-foreground/60">
+                After submitting, you may not be able to change your vote.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {confirmOpen ? (
@@ -243,9 +396,7 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
               )}
             </div>
 
-            {message && !submitted ? (
-              <ErrorAlert title="Vote submission failed" message={message} />
-            ) : null}
+            {voteError ? <ErrorAlert title="Vote submission failed" message={voteError} /> : null}
 
             <div className="flex flex-wrap gap-2">
               <Button
@@ -256,35 +407,20 @@ export function Ballot({ contestId, electionTitle, contestTitle, maxSelections, 
                 Back
               </Button>
               <Button
+                ref={confirmButtonRef}
                 onClick={async () => {
                   const ok = await submitVote();
                   if (ok) {
                     setConfirmOpen(false);
                   }
                 }}
-                disabled={disabled || selectedCandidates.length === 0}
+                disabled={submitting || selectedCandidates.length === 0}
               >
                 {submitting ? "Submitting..." : "Confirm & Submit"}
               </Button>
             </div>
           </Card>
         </div>
-      ) : null}
-
-      {message ? (
-        submitted ? (
-          <p
-            className={cn(
-              "flex items-start gap-2 rounded-xl border px-3 py-2 text-sm",
-              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200"
-            )}
-          >
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{message}</span>
-          </p>
-        ) : (
-          <ErrorAlert title="Vote submission failed" message={message} />
-        )
       ) : null}
     </Card>
   );
