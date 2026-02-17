@@ -2,11 +2,12 @@
 set -euo pipefail
 
 PORT="${FRONTEND_PORT:-3001}"
-BASE_URL="http://localhost:${PORT}"
+HOST="${FRONTEND_HOST:-127.0.0.1}"
+BASE_URL="http://${HOST}:${PORT}"
 
 (
   cd apps/frontend
-  bun run dev -- -p "$PORT" > /tmp/vote-web.log 2>&1
+  bun run dev -- -p "$PORT" -H "$HOST" > /tmp/vote-web.log 2>&1
 ) &
 WEB_PID=$!
 trap 'kill ${WEB_PID} >/dev/null 2>&1 || true' EXIT
@@ -18,7 +19,7 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
-curl -sS "${BASE_URL}" | rg -q "Election Console"
+curl -sS "${BASE_URL}" | rg -q "Vote Platform"
 curl -sS "${BASE_URL}/login" | rg -q "Sign in"
 curl -sS "${BASE_URL}/verify-otp" | rg -q "Verify OTP"
 

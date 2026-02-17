@@ -96,6 +96,7 @@ export default function AdminElectionPage() {
   const [editContestDescription, setEditContestDescription] = useState("");
   const [editContestMaxSelections, setEditContestMaxSelections] = useState(1);
   const [editContestMetadata, setEditContestMetadata] = useState("");
+  const [contestSearch, setContestSearch] = useState("");
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidatesPagination, setCandidatesPagination] = useState<PaginationMeta>(DEFAULT_PAGINATION);
@@ -155,6 +156,7 @@ export default function AdminElectionPage() {
     setEditContestDescription("");
     setEditContestMaxSelections(1);
     setEditContestMetadata("");
+    setContestSearch("");
     setContests([]);
     setCandidates([]);
     setCandidatesPagination(DEFAULT_PAGINATION);
@@ -906,6 +908,26 @@ export default function AdminElectionPage() {
   const hasPrevVoters = votersPagination.page > 1;
   const hasNextVoters = votersPagination.page < votersPagination.total_pages;
   const selectedContest = contests.find((item) => item.id === selectedContestId) ?? null;
+  const contestKeyword = contestSearch.trim().toLowerCase();
+  const contestsSorted = [...contests].sort((a, b) => {
+    if (a.is_default !== b.is_default) {
+      return a.is_default ? -1 : 1;
+    }
+    return a.title.localeCompare(b.title);
+  });
+  const visibleContests =
+    contestKeyword.length === 0
+      ? contestsSorted
+      : contestsSorted.filter((contest) => {
+          const meta = (() => {
+            try {
+              return JSON.stringify(contest.metadata ?? {});
+            } catch {
+              return "";
+            }
+          })();
+          return `${contest.title} ${contest.id} ${meta}`.toLowerCase().includes(contestKeyword);
+        });
   const canEditDraft = canManage && status === "draft";
   const canEditSelectedContest = canEditDraft && Boolean(selectedContestId);
   const isImportBusy = isImportValidating || isImporting;
@@ -1286,7 +1308,85 @@ export default function AdminElectionPage() {
             A contest is a single ballot inside an election. Use multiple contests for province/district elections.
           </p>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-2">
+              <Label htmlFor="contest_search">Find contest</Label>
+              <Input
+                id="contest_search"
+                value={contestSearch}
+                onChange={(e) => setContestSearch(e.target.value)}
+                disabled={!canManage || isElectionDataLoading}
+                placeholder="Search by title, contest id, or metadata (province/district)"
+              />
+
+              <div className="max-h-72 overflow-auto rounded-2xl border border-border/70 bg-card/60 p-2 shadow-sm">
+                {visibleContests.length === 0 ? (
+                  <p className="p-3 text-sm text-foreground/60">No contests match your search.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {visibleContests.map((contest) => {
+                      const isSelected = contest.id === selectedContestId;
+                      const meta =
+                        contest.metadata && typeof contest.metadata === "object"
+                          ? (() => {
+                              const record = contest.metadata as Record<string, unknown>;
+                              const province =
+                                typeof record.province === "string" ? record.province : null;
+                              const district =
+                                typeof record.district === "number" || typeof record.district === "string"
+                                  ? record.district
+                                  : null;
+                              if (province && district !== null) return `${province} / District ${district}`;
+                              if (province) return province;
+                              return null;
+                            })()
+                          : null;
+
+                      return (
+                        <button
+                          key={contest.id}
+                          type="button"
+                          className={`w-full rounded-xl border p-3 text-left text-sm transition duration-200 ${
+                            isSelected
+                              ? "border-primary/55 bg-primary/10 shadow-[0_14px_30px_-22px_rgba(29,78,216,0.85)]"
+                              : "border-border/70 bg-card/70 hover:border-primary/35 hover:bg-card/95"
+                          }`}
+                          onClick={() => void onSelectContest(contest.id)}
+                          disabled={!canManage || isElectionDataLoading}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="font-semibold">
+                                {contest.title}
+                                {contest.is_default ? (
+                                  <span className="ml-2 rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/70">
+                                    default
+                                  </span>
+                                ) : null}
+                              </p>
+                              {meta ? <p className="text-xs text-foreground/60">{meta}</p> : null}
+                              <p className="text-xs text-foreground/55">{contest.id}</p>
+                            </div>
+                            <div className="shrink-0 text-right text-xs text-foreground/60">
+                              <p>
+                                {contest.candidate_count} candidates
+                              </p>
+                              <p>
+                                {contest.voter_count} voters
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-foreground/60">
+                Tip: include structured fields like <code className="font-mono">province</code> and{" "}
+                <code className="font-mono">district</code> in contest metadata.
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="contest_select">Selected contest</Label>
               <select
@@ -1294,10 +1394,10 @@ export default function AdminElectionPage() {
                 className={selectClassName}
                 value={selectedContestId}
                 onChange={(e) => void onSelectContest(e.target.value)}
-                disabled={!canManage || isElectionDataLoading || contests.length === 0}
+                disabled={!canManage || isElectionDataLoading || contestsSorted.length === 0}
               >
-                {contests.length === 0 ? <option value="">No contests loaded</option> : null}
-                {contests.map((contest) => (
+                {contestsSorted.length === 0 ? <option value="">No contests loaded</option> : null}
+                {contestsSorted.map((contest) => (
                   <option key={contest.id} value={contest.id}>
                     {contest.title}
                     {contest.is_default ? " (default)" : ""} [{contest.candidate_count} candidates,{" "}
@@ -1305,22 +1405,74 @@ export default function AdminElectionPage() {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Voter URL</p>
-              {selectedContestId ? (
-                <Link className="text-sm text-primary underline" href={`/voter/contests/${selectedContestId}`}>
-                  /voter/contests/{selectedContestId}
-                </Link>
-              ) : (
-                <p className="text-sm text-foreground/60">Select a contest to get its voter URL.</p>
-              )}
-              {selectedContest ? (
-                <p className="text-xs text-foreground/60">
-                  max_selections: {selectedContest.max_selections} | is_default:{" "}
-                  {String(selectedContest.is_default)}
-                </p>
-              ) : null}
+
+              <div className="rounded-2xl border border-border/70 bg-card/70 p-3 text-sm shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Voter URL</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedContestId) return;
+                      if (!navigator.clipboard?.writeText) {
+                        pushGlobalError("Clipboard API not available", "Clipboard API not available");
+                        return;
+                      }
+                      void navigator.clipboard
+                        .writeText(`/voter/contests/${selectedContestId}`)
+                        .then(() => pushGlobalSuccess("Copied voter URL"))
+                        .catch((error) => pushGlobalError(error, "copy failed"));
+                    }}
+                    disabled={!selectedContestId}
+                  >
+                    Copy URL
+                  </Button>
+                </div>
+                {selectedContestId ? (
+                  <Link className="text-sm text-primary underline" href={`/voter/contests/${selectedContestId}`}>
+                    /voter/contests/{selectedContestId}
+                  </Link>
+                ) : (
+                  <p className="text-sm text-foreground/60">Select a contest to get its voter URL.</p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedContestId) return;
+                      if (!navigator.clipboard?.writeText) {
+                        pushGlobalError("Clipboard API not available", "Clipboard API not available");
+                        return;
+                      }
+                      void navigator.clipboard
+                        .writeText(selectedContestId)
+                        .then(() => pushGlobalSuccess("Copied contest id"))
+                        .catch((error) => pushGlobalError(error, "copy failed"));
+                    }}
+                    disabled={!selectedContestId}
+                  >
+                    Copy contest id
+                  </Button>
+                  {selectedContestId ? (
+                    <Link href={`/voter/contests/${selectedContestId}`}>
+                      <Button type="button" variant="outline" size="sm">
+                        Open voter view
+                      </Button>
+                    </Link>
+                  ) : null}
+                </div>
+
+                {selectedContest ? (
+                  <p className="mt-3 text-xs text-foreground/60">
+                    max_selections: {selectedContest.max_selections} | is_default:{" "}
+                    {String(selectedContest.is_default)}
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -1456,7 +1608,10 @@ export default function AdminElectionPage() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="space-y-3">
-            <h3 className="font-semibold">Candidates</h3>
+            <h3 className="font-semibold">
+              Candidates{" "}
+              {selectedContest ? <span className="text-foreground/60">({selectedContest.title})</span> : null}
+            </h3>
             <form onSubmit={onAddCandidate} className="space-y-2">
               <Input
                 placeholder="Candidate name"
@@ -1586,7 +1741,10 @@ export default function AdminElectionPage() {
           </Card>
 
           <Card className="space-y-3">
-            <h3 className="font-semibold">Voter Roll</h3>
+            <h3 className="font-semibold">
+              Voter Roll{" "}
+              {selectedContest ? <span className="text-foreground/60">({selectedContest.title})</span> : null}
+            </h3>
             <form onSubmit={onAddVoter} className="space-y-2">
               <Input
                 placeholder="User UUID"
@@ -1728,14 +1886,20 @@ export default function AdminElectionPage() {
 
         {isResultsLoading ? (
           <Card className="space-y-2">
-            <h3 className="font-semibold">Results</h3>
+            <h3 className="font-semibold">
+              Results{" "}
+              {selectedContest ? <span className="text-foreground/60">({selectedContest.title})</span> : null}
+            </h3>
             <Skeleton className="h-4 w-2/5" />
             <Skeleton className="h-4 w-1/3" />
             <Skeleton className="h-4 w-1/4" />
           </Card>
         ) : results.length > 0 ? (
           <Card className="space-y-2">
-            <h3 className="font-semibold">Results</h3>
+            <h3 className="font-semibold">
+              Results{" "}
+              {selectedContest ? <span className="text-foreground/60">({selectedContest.title})</span> : null}
+            </h3>
             {results.map((r) => (
               <p key={r.candidate_id} className="text-sm">
                 {r.name}: <strong>{r.total}</strong>
