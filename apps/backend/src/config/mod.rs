@@ -8,6 +8,7 @@ pub struct AppConfig {
     pub jwt_secret: String,
     pub access_token_ttl_minutes: i64,
     pub refresh_token_ttl_days: i64,
+    pub cors_allowed_origins: Vec<String>,
 }
 
 impl AppConfig {
@@ -27,6 +28,16 @@ impl AppConfig {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(14);
+        let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
+            .unwrap_or_else(|_| {
+                "http://localhost:3000,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3002"
+                    .to_string()
+            })
+            .split(',')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
 
         Self {
             host,
@@ -35,6 +46,7 @@ impl AppConfig {
             jwt_secret,
             access_token_ttl_minutes,
             refresh_token_ttl_days,
+            cors_allowed_origins,
         }
     }
 }

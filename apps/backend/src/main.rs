@@ -27,17 +27,30 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env();
     let pool = db::connect(&config.database_url).await?;
     let state = AppState::new();
+    let cors_allowed_origins = config.cors_allowed_origins.clone();
 
     let bind_addr = format!("{}:{}", config.host, config.port);
     tracing::info!("starting API at {}", bind_addr);
+    tracing::info!(
+        "allowed CORS origins: {}",
+        cors_allowed_origins.join(", ")
+    );
 
     HttpServer::new(move || {
+        let allowed_origins = cors_allowed_origins.clone();
+
         App::new()
             .wrap(Logger::default())
             .wrap(
                 Cors::default()
-                    .allowed_origin("http://localhost:3000")
-                    .allowed_methods(vec!["GET", "POST", "PATCH", "OPTIONS"])
+                    .allowed_origin_fn(move |origin, _req_head| {
+                        origin
+                            .to_str()
+                            .ok()
+                            .map(|value| allowed_origins.iter().any(|allowed| allowed == value))
+                            .unwrap_or(false)
+                    })
+                    .allowed_methods(vec!["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
                     .allowed_headers(vec![
                         actix_web::http::header::AUTHORIZATION,
                         actix_web::http::header::CONTENT_TYPE,

@@ -9,6 +9,12 @@ cp .env.example .env
 cargo run
 ```
 
+If frontend runs on a different port, update CORS origins in `apps/backend/.env`:
+
+```env
+CORS_ALLOWED_ORIGINS=http://localhost:3002
+```
+
 ## Endpoints
 
 - `GET /health`
